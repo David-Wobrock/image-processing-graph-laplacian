@@ -42,3 +42,11 @@ def rgb2ycc(im):
 
 def ycc2rgb(im):
     return np.dot(im, rgb_from_yuv)
+
+def xy2num(x, y, M, N):
+    return int(x*N + y)
+
+def num2xy(num, M, N):
+    y = int(np.floor(num / M))
+    x = int(num - (y)*M)
+    return x, y

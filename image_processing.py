@@ -1,7 +1,7 @@
-import argparse
 import sampling
 import affinity_methods
 import numpy as np
+import matplotlib.pyplot as plt
 from utils import rgb2ycc, ycc2rgb
 from scipy import misc
 from scipy.linalg import eigh, sqrtm, svd
@@ -9,6 +9,8 @@ from scipy.spatial import distance
 import logging
 import time
 import sys
+
+from utils import xy2num
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +89,19 @@ def Orthogonalization(W_A, W_AB):
     print('Orthogonalization done in {}s'.format(time.time() - start))
     return V, Lambda
 
+def display_affinity_matrix(M, N, phi, Pi, sample_indices, pixel_x, pixel_y):
+    # Permute pixel order in eigenvectors of affinity matrix
+    phi = Permutation(phi, sample_indices)
+
+    affinity_pixel = xy2num(pixel_x, pixel_y, M, N)
+    K_pixel = np.dot((phi[affinity_pixel, :] * Pi), phi.T).reshape(N, M).T
+    # TODO if save
+    plt.imsave(
+        'results/affinity_{0}x{1}.jpg'.format(pixel_x, pixel_y),
+        K_pixel,
+        cmap='RdBu_r')
+    logger.info('Displayed affinity matrix of pixel {0}x{1}'.format(pixel_x, pixel_y))
+
 
 def image_processing(y, **kwargs):
     start = time.time()
@@ -94,45 +109,44 @@ def image_processing(y, **kwargs):
 
     # Sampling
     #sampling_code = kwargs.get('sampling', 'random')
-    sampling_code = kwargs.get('sampling', 'spatially_uniform')
-    sampling_function = sampling.get_sample_function(sampling_code)
-    sample_size = int(M*N*0.01)
+    sampling_code = kwargs.get('sampling', sampling.SPATIALLY_UNIFORM)
+    sampling_function = sampling.methods[sampling_code]
+    sample_size = int(M*N*0.001)
     #sample_size = 100
     sample_indices = sampling_function(M, N, sample_size)
     logger.info('Number of sample pixels: Theory {0} / Real {1}'.format(sample_size, len(sample_indices)))
 
     # Nystroem
-    affinity_code = kwargs.get('affinity', 'NLM')
-    #affinity_code = affinity_methods.get('affinity', 'bilateral')
-    affinity_function = affinity_methods.get_affinity_function(affinity_code)
+    affinity_code = kwargs.get('affinity', affinity_methods.SPATIAL)
+    affinity_function = affinity_methods.methods[affinity_code]
     phi, Pi = Nystroem(y, sample_indices, affinity_function)
 
-    # Permute pixel order in eigenvectors of affinity matrix
-    phi = Permutation(phi, sample_indices)
     # Display affinity vector of a pixel
-    K = np.dot(phi, Pi).dot(phi.T)
-    pass
+    display_affinity_matrix(M, N, phi, Pi, sample_indices, 200, 300)
+    display_affinity_matrix(M, N, phi, Pi, sample_indices, 190, 45)
+
 
     W_A, W_AB = Sinkhorn(phi, Pi)
     V, Lambda = Orthogonalization(W_A, W_AB)
     
     # Display eigenvalues
+    # TODO
     #plt.figure(5)
     #plt.plot(Lambda[:10])
     np.savetxt('results/eigenvalues.txt', Lambda[:10])
     V = Permutation(V, sample_indices)
     #plt.figure(6)
     #plt.imshow(V[:, 0].reshape(N, M).T, cmap='gray')
-    misc.imsave('results/eigenvector1.jpg', V[:, 0].reshape(N, M).T)
+    plt.imsave('results/eigenvector1.jpg', V[:, 0].reshape(N, M).T)
     #plt.figure(7)
     #plt.imshow(V[:, 1].reshape(N, M).T, cmap='gray')
-    misc.imsave('results/eigenvector2.jpg', V[:, 1].reshape(N, M).T)
+    plt.imsave('results/eigenvector2.jpg', V[:, 1].reshape(N, M).T)
     #plt.figure(8)
     #plt.imshow(V[:, 2].reshape(N, M).T, cmap='gray')
-    misc.imsave('results/eigenvector3.jpg', V[:, 2].reshape(N, M).T)
+    plt.imsave('results/eigenvector3.jpg', V[:, 2].reshape(N, M).T)
     #plt.figure(9)
     #plt.imshow(V[:, 3].reshape(N, M).T, cmap='gray')
-    misc.imsave('results/eigenvector4.jpg', V[:, 3].reshape(N, M).T)
+    plt.imsave('results/eigenvector4.jpg', V[:, 3].reshape(N, M).T)
 
     # TODO Display filter eigenvector
     Z = np.dot(
@@ -151,6 +165,7 @@ def set_up_logging():
 
 
 if __name__ == '__main__':
+    import argparse
     # TODO command line tool for selecting different
     # variations
     # + name of the input picture
@@ -162,19 +177,18 @@ if __name__ == '__main__':
         action='store_true')
 
     args = parser.parse_args()
-    if not args.save:  # If I don't save, I display
-        import matplotlib.pyplot as plt
 
     set_up_logging()
 
-    #img_name = 'flower_noisy.jpg'
-    img_name = 'mountain_noisy.jpg'
-    #img_name = 'Lena.png'
-    #img_name = 'house.jpg'
+    #img_name = 'input/flower_noisy.jpg'
+    #img_name = 'input/mountain_noisy.jpg'
+    #img_name = 'input/mountain.jpg'
+    #img_name = 'input/Lena.png'
+    img_name = 'input/house.jpg'
 
     y = misc.imread(img_name)
     y = rgb2ycc(y)
-    print("Image shape {}".format(y.shape))
+    print("Image '{0}' has shape {1}".format(img_name, y.shape))
     if len(y.shape) == 2:  # Detect gray scale
         plt.gray()
 
@@ -191,7 +205,7 @@ if __name__ == '__main__':
 
     if args.save:
         z = ycc2rgb(z)
-        misc.imsave('results/output.jpg', z.astype(np.uint8, copy=False))
+        plt.imsave('results/output.jpg', z.astype(np.uint8, copy=False))
     else:
         plt.figure(1)
         y = ycc2rgb(y)

@@ -6,7 +6,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
-def sample(M, N, num_samples):
+def spatially_uniform_sample(M, N, num_samples):
     start = time.time()
     sample_dist = int(np.sqrt((M*N) / num_samples))
 

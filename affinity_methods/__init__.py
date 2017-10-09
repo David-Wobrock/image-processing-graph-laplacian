@@ -1,8 +1,13 @@
-def get_affinity_function(code):
-    if code == 'NLM':
-        from .NLM import affinity
-    elif code == 'bilateral':
-        from .bilateral import affinity
-    else:
-        raise Exception('Unknown sample function code')
-    return affinity
+from .NLM import NLM_affinity
+from .bilateral import bilateral_affinity
+from .spatial import spatial_affinity
+from .photometric import photometric_affinity
+
+SPATIAL, PHOTOMETRIC, BILATERAL, NLM = 'spatial', 'photometric', 'bilateral', 'NLM'
+
+methods = {
+    SPATIAL: spatial_affinity,
+    NLM: NLM_affinity,
+    BILATERAL: bilateral_affinity,
+    PHOTOMETRIC: photometric_affinity
+}

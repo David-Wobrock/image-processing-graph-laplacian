@@ -5,7 +5,7 @@ import time
 logger = logging.getLogger(__name__)
 
 
-def sample(M, N, num_samples):
+def random_sample(M, N, num_samples):
     start = time.time()
     sample_indices = set(np.random.randint(0, M*N, num_samples, dtype='uint32'))
     while len(sample_indices) < num_samples:
