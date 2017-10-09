@@ -1,183 +1,203 @@
-import matplotlib.pyplot as plt
+import argparse
+import sampling
+import affinity_methods
 import numpy as np
-import random
+from utils import rgb2ycc, ycc2rgb
 from scipy import misc
 from scipy.linalg import eigh, sqrtm, svd
 from scipy.spatial import distance
+import logging
+import time
+import sys
+
+logger = logging.getLogger(__name__)
 
 
-def sample_img_random(img):
-    """Random sampling"""
-    nx, ny = img.shape
-    N = nx*ny
-    n = round(N*0.002)  # Number of sample pixels
-    all_pixels = set()
-    for i in range(nx):
-        for j in range(ny):
-            #data_r, data_g, data_b = img[i, j].tolist()
-            #all_pixels.add((i, j, data_r, data_g, data_b))
-            gray_scale = float(img[i, j])
-            all_pixels.add((i, j, gray_scale))
-    sample_pixels = random.sample(all_pixels, n)
-    remaining_pixels = all_pixels.difference(sample_pixels)
-    return sample_pixels, remaining_pixels
+def Permutation(phi, sample_indices):
+    start = time.time()
+    k1 = 0  # Sample pixels
+    k2 = len(sample_indices)  # Remaining pixels
+
+    correct_indices = np.ones(phi.shape[0], dtype=np.uint32)
+    # TODO loop can be optimised (less conditions)
+    for i in range(phi.shape[0]):
+        if k1 < len(sample_indices) and i == sample_indices[k1]:
+            correct_indices[i] = k1
+            k1 += 1
+        else:
+            correct_indices[i] = k2
+            k2 += 1
+    print('Permutation done in {}s'.format(time.time() - start))
+    return phi[correct_indices, :]
 
 
-def sample_img(img):
-    """Spatially uniform sampling"""
-    nx, ny = img.shape
-    sample_distance = 20
+def Nystroem(y, sample_indices, affinity_function):
+    start = time.time()
+    M, N = y.shape[:2]
 
-    all_pixels = set()
-    for i in range(nx):
-        for j in range(ny):
-            gray_scale = float(img[i, j])
-            all_pixels.add((i, j, gray_scale))
+    AB = affinity_function(y, sample_indices)
 
-    sample_pixels = set()
-    for i in range(2, nx, sample_distance):
-        for j in range(2, ny, sample_distance):
-            sample_pixels.add((i, j, float(img[i, j])))
+    K_A = AB[:, sample_indices]
+    v = np.asarray(range(M*N))
+    v = np.delete(v, sample_indices)
+    K_AB = AB[:, v]
 
-    remaining_pixels = all_pixels.difference(sample_pixels)
-    print("Number of sample pixels: {}".format(len(sample_pixels)))
-    return list(sample_pixels), list(remaining_pixels)
+    phi_A, Pi, _ = svd(K_A)
+    phi_A[:, ::2] *= -1
+    phi = np.concatenate((
+        phi_A,
+        np.dot(
+            np.dot(K_AB.T, phi_A),
+            np.linalg.inv(np.diag(Pi)))))
 
-
-def euclidean_dist(i, j):
-    euclidean_dist_location = np.sqrt(np.power(j[0] - i[0], 2) + np.power(j[1] - i[1], 2))
-    euclidean_dist_colors = np.sqrt(np.power(j[2] - i[2], 2) + np.power(j[3] - i[3], 2) + np.power(j[4] - i[4], 2))
-    # 0.8 and 0.2 are just arbitrary
-    return euclidean_dist_location*0.8 + euclidean_dist_colors*0.2
-
-def euclidean_dist_gray(i, j):
-    euclidean_dist_location = np.sqrt(np.power(j[0] - i[0], 2) + np.power(j[1] - i[1], 2))
-    euclidean_dist_colors = np.sqrt(np.power(j[2] - i[2], 2))
-    # 0.8 and 0.2 are just arbitrary
-    return euclidean_dist_location*0.8 + euclidean_dist_colors*0.2
-
-def bilateral(i, j):
-    sigma_d = 10
-    sigma_r = 15
-    location_diff = np.power(
-        np.power(i[0] - j[0], 2) + np.power(i[1] - j[1], 2),
-        2)
-    intensity_diff = np.power(np.abs(i[2] - j[2]), 2)
-    return np.exp(
-        -(location_diff / (2*sigma_d*sigma_d)) - (intensity_diff / (2*sigma_r*sigma_d)))
+    print('Nystrom done in {}s'.format(time.time() - start))
+    return phi, Pi
 
 
-def gaussian(i, j):
-    sigma = 10
-    norm = np.linalg.norm(np.asarray(i) - np.asarray(j))
-    return np.exp(- (norm ** 2) / (2*(sigma**2)))
-
-
-def build_affinity_matrices_from_sample(sample_pixels, remaining_pixels):
-    """Affinity matrix with euclidean distance"""
-    n = len(sample_pixels)
-    m = len(remaining_pixels)
-    # Compute A and B
-    A = np.empty([n, n], dtype=np.float64)
-    for idx_i, i in enumerate(sample_pixels):
-        idx_j = idx_i
-        for j in sample_pixels[idx_i:]:
-            #A[idx_i, idx_j] = distance.euclidean(i, j)
-            A[idx_i, idx_j] = ((i[0] - j[0])**2) + ((i[1] - j[1])**2)
-            A[idx_j, idx_i] = A[idx_i, idx_j]
-            idx_j += 1
-    B = np.empty([n, m], dtype=np.float64)
-    for idx_i, i in enumerate(sample_pixels):
-        print(idx_i)
-        for idx_j, j in enumerate(remaining_pixels):
-            #B[idx_i, idx_j] = distance.euclidean(i, j)
-            B[idx_i, idx_j] = ((i[0] - j[0])**2) + ((i[1] - j[1])**2)
-
-    return A, B
-
-
-def sinkhorn(approx_eigvecs, diag_eigvals_A):
-    n = approx_eigvecs.shape[1]
-    N = approx_eigvecs.shape[0]
-    r = np.ones(N)
+def Sinkhorn(phi, Pi):
+    start = time.time()
+    n, m = phi.shape[:2]
+    r = np.ones(n)
     for i in range(100):
-        c = 1. / (np.dot(approx_eigvecs, (diag_eigvals_A * np.dot(approx_eigvecs.T, r))))
-        r = 1. / (np.dot(approx_eigvecs, (diag_eigvals_A * np.dot(approx_eigvecs.T, c))))
+        c = 1./(np.dot(phi, (Pi * (np.dot(phi.T, r).T)).T))
+        r = 1./(np.dot(phi, (Pi * (np.dot(phi.T, c).T)).T))
+    v = np.repeat(c, m).reshape(n, m) * phi
+    ABw = np.empty([m, n])
+    for i in range(m):  # Can be parallelised
+        ABw[i, :] = np.dot((r[i] * (Pi.T * phi[i, :])), v.T)
+    W_A = ABw[:, :m]
+    W_AB = ABw[:, m:n]
+    print('Sinkhorn done in {}s'.format(time.time() - start))
+    return W_A, W_AB
 
-    v = np.tile(c, [1, n]) * approx_eigvecs.T
-    W_AB = np.empty([n, N])
-    for i in range(n):  # Can be parallelised 
-        W_AB[i, :] = np.dot(np.dot(r[i], (diag_eigvals_A.T * approx_eigvecs[i, :])), v)
+
+def Orthogonalization(W_A, W_AB):
+    start = time.time()
+    W_Ah = np.zeros(W_A.shape)
+    np.fill_diagonal(W_Ah, 1./ (W_A.diagonal() ** 0.5))
+    Q = W_A + np.dot(W_Ah, W_AB).dot(W_AB.T).dot(W_Ah)
+
+    U, L, _ = svd(Q)
+    Lh = np.zeros(np.diag(L).shape)
+    np.fill_diagonal(Lh, 1./(L ** 0.5))
+    V = np.concatenate((W_A, W_AB.T)).dot(W_Ah).dot(U).dot(Lh)
+
+    Lambda = L
+    Lambda[Lambda>1] = 1
+    print('Orthogonalization done in {}s'.format(time.time() - start))
+    return V, Lambda
+
+
+def image_processing(y, **kwargs):
+    start = time.time()
+    M, N = y.shape[:2]
+
+    # Sampling
+    #sampling_code = kwargs.get('sampling', 'random')
+    sampling_code = kwargs.get('sampling', 'spatially_uniform')
+    sampling_function = sampling.get_sample_function(sampling_code)
+    sample_size = int(M*N*0.01)
+    #sample_size = 100
+    sample_indices = sampling_function(M, N, sample_size)
+    logger.info('Number of sample pixels: Theory {0} / Real {1}'.format(sample_size, len(sample_indices)))
+
+    # Nystroem
+    affinity_code = kwargs.get('affinity', 'NLM')
+    #affinity_code = affinity_methods.get('affinity', 'bilateral')
+    affinity_function = affinity_methods.get_affinity_function(affinity_code)
+    phi, Pi = Nystroem(y, sample_indices, affinity_function)
+
+    # Permute pixel order in eigenvectors of affinity matrix
+    phi = Permutation(phi, sample_indices)
+    # Display affinity vector of a pixel
+    K = np.dot(phi, Pi).dot(phi.T)
+    pass
+
+    W_A, W_AB = Sinkhorn(phi, Pi)
+    V, Lambda = Orthogonalization(W_A, W_AB)
     
-    return W_AB[:, :n], W_AB[:, n:N]
+    # Display eigenvalues
+    #plt.figure(5)
+    #plt.plot(Lambda[:10])
+    np.savetxt('results/eigenvalues.txt', Lambda[:10])
+    V = Permutation(V, sample_indices)
+    #plt.figure(6)
+    #plt.imshow(V[:, 0].reshape(N, M).T, cmap='gray')
+    misc.imsave('results/eigenvector1.jpg', V[:, 0].reshape(N, M).T)
+    #plt.figure(7)
+    #plt.imshow(V[:, 1].reshape(N, M).T, cmap='gray')
+    misc.imsave('results/eigenvector2.jpg', V[:, 1].reshape(N, M).T)
+    #plt.figure(8)
+    #plt.imshow(V[:, 2].reshape(N, M).T, cmap='gray')
+    misc.imsave('results/eigenvector3.jpg', V[:, 2].reshape(N, M).T)
+    #plt.figure(9)
+    #plt.imshow(V[:, 3].reshape(N, M).T, cmap='gray')
+    misc.imsave('results/eigenvector4.jpg', V[:, 3].reshape(N, M).T)
+
+    # TODO Display filter eigenvector
+    Z = np.dot(
+        V,
+        ((Lambda.T) * np.dot(V.T, y.reshape(M*N)))).reshape(N, M).T
+    print('Program done in {}s'.format(time.time() - start))
+    return Z
 
 
-def orthogonalization(W_A, W_B):
-    sqrtW_A = sqrtm(np.inv(W_A))
-    Q = W_A + np.dot(
-        np.dot(
-            np.dot(sqrtW_A, W_B),
-            W_B.T),
-        sqrtW_A) 
-    eigvals_Q, eigvecs_Q = eigh(Q)
-    approx_eigvecs = np.dot(
-            np.dot(
-                np.dot(
-                    np.concatenate((W_A, W_B.T)),
-                    sqrtW_A),
-                eigvecs_Q),
-            np.inv(sqrt(eigvals_Q)))
-
-    return eigvals_Q, approx_eigvecs
+def set_up_logging():
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    ch = logging.StreamHandler(sys.stdout)
+    ch.setLevel(logging.INFO)
+    root.addHandler(ch)
 
 
-def global_image_denoising(img):
-    sample_pixels, remaining_pixels = sample_img(img)
-    K_A, K_B = build_affinity_matrices_from_sample(
-        sample_pixels, remaining_pixels)
-    assert np.all(K_A == K_A.T)
+if __name__ == '__main__':
+    # TODO command line tool for selecting different
+    # variations
+    # + name of the input picture
+    # + display result or save it to file
+    parser = argparse.ArgumentParser(
+        description='Image Processing using Graph Laplacian Operator')
+    parser.add_argument(
+        '-save',
+        action='store_true')
 
-    #eigvals_K_A, eigvecs_K_A = eigh(K_A)
-    eigvecs_K_A, eigvals_K_A, _ = svd(K_A)
-    diag_eigvals_K_A = np.diag(eigvals_K_A)
+    args = parser.parse_args()
+    if not args.save:  # If I don't save, I display
+        import matplotlib.pyplot as plt
 
-    approx_eigvecs_K = np.concatenate((
-        eigvecs_K_A,
-        np.dot(
-            np.dot(K_B.T, eigvecs_K_A),
-            np.linalg.inv(diag_eigvals_K_A))))
+    set_up_logging()
 
-    print(approx_eigvecs_K)
-    print(approx_eigvecs_K.shape)
-    '''W_A, W_B = sinkhorn(approx_eigvecs_K, diag_eigvals_K_A)
+    #img_name = 'flower_noisy.jpg'
+    img_name = 'mountain_noisy.jpg'
+    #img_name = 'Lena.png'
+    #img_name = 'house.jpg'
 
-    approx_eigvals_W, approx_eigvecs_W = orthogonalization(W_A, W_B)
+    y = misc.imread(img_name)
+    y = rgb2ycc(y)
+    print("Image shape {}".format(y.shape))
+    if len(y.shape) == 2:  # Detect gray scale
+        plt.gray()
 
-    approx_filter = approx_eigvecs_W * approx_eigvals_W * approx_eigvecs_W.T
-    return approx_filter * img'''
-    return img
+    y_ycc = y[:, :, 0]
+    z_ycc = image_processing(y_ycc)
+    z = y.copy()
+    z[:, :, 0] = z_ycc.copy()
 
-#img_name = 'Lena.png'
-#img_name = 'mountain.jpg'
-img_name = 'flower.jpg'
+    # Grayscale of both pictures
+    #plt.figure(3)
+    #plt.imshow(y_ycc, cmap='gray')
+    #plt.figure(4)
+    #plt.imshow(z_ycc, cmap='gray')
 
-img = misc.imread(img_name)
-print("Image shape {}".format(img.shape))
-if len(img.shape) == 2:  # Detect gray scale
-    plt.gray()
+    if args.save:
+        z = ycc2rgb(z)
+        misc.imsave('results/output.jpg', z.astype(np.uint8, copy=False))
+    else:
+        plt.figure(1)
+        y = ycc2rgb(y)
+        plt.imshow(y.astype(np.uint8, copy=False))
 
-#plt.figure(1)
-#plt.imshow(img)
-
-# Create noisy image
-sigma = 50
-noisy_img = img + np.dot(np.random.random_sample(img.shape), sigma)
-plt.figure(2)
-plt.imshow(noisy_img)
-
-denoised_img = global_image_denoising(noisy_img)
-plt.figure(3)
-plt.imshow(denoised_img)
-
-#misc.imsave('test.out.png', approx_affinity_mat)
-#plt.show()
+        plt.figure(2)
+        z = ycc2rgb(z)
+        plt.imshow(z.astype(np.uint8, copy=False))
+        plt.show()
