@@ -17,7 +17,7 @@ def spatially_uniform_sample(M, N, num_samples):
     c = 0
     for j in spy:
         for i in spx:
-            sample_indices[c] = i + N*(j-1)
+            sample_indices[c] = i + M*(j-1)
             c += 1
         
     logger.info('Spatially uniform sampling (with distance {0}) done in {1}s'.format(sample_dist, time.time() - start))

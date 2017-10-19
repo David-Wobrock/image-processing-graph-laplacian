@@ -21,9 +21,9 @@ def NLM_affinity(y, sample_indices):
     Z = im2col(img.T, [ksz, ksz])
     Z = Z * np.repeat(G, M*N).reshape(ksz**2, M*N)
 
-    AB = np.empty((len(sample_indices), M*N))
-    for i in range(len(sample_indices)):
-        ind_x, ind_y = num2xy(sample_indices[i], M, N)
+    AB = np.empty((len(sample_indices), M*N), dtype=np.float64)
+    for i, idx in enumerate(sample_indices):
+        ind_x, ind_y = num2xy(idx, M, N)
         loc_p = [ind_x+kRad, ind_y+kRad]
         yp = img[loc_p[0]-kRad:loc_p[0]+kRad+1, loc_p[1]-kRad:loc_p[1]+kRad+1]
         Zc = yp.T.reshape(ksz**2) * G.reshape(ksz**2)
@@ -31,4 +31,4 @@ def NLM_affinity(y, sample_indices):
         Ker = np.exp(-np.sum((Zc - Z) ** 2, axis=0) / h**2)
         AB[i, :] = Ker
     logger.info('Affinity function NLM done in {0}s'.format(time.time() - start))
-    return AB 
+    return AB

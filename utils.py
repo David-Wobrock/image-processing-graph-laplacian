@@ -44,9 +44,13 @@ def ycc2rgb(im):
     return np.dot(im, rgb_from_yuv)
 
 def xy2num(x, y, M, N):
+    if y >= N:
+        raise ValueError('y {0} cannot be bigger than N {1}'.format(y, N))
+    if x >= M:
+        raise ValueError('x {0} cannot be bigger than M {1}'.format(x, M))
     return int(x*N + y)
 
 def num2xy(num, M, N):
-    y = int(np.floor(num / M))
-    x = int(num - (y)*M)
+    x = int(num / N)
+    y = num % N
     return x, y
