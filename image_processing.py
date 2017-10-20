@@ -56,6 +56,7 @@ def Nystroem(y, sample_indices, affinity_function):
 
 
 def Sinkhorn(phi, Pi):
+    # Adapted from GLIDE, by Milanfar
     start = time.time()
     M, N = phi.shape[:2]
     r = np.ones(M)
@@ -73,6 +74,7 @@ def Sinkhorn(phi, Pi):
 
 
 def Orthogonalization(W_A, W_AB):
+    # Adapted from GLIDE, by Milanfar
     start = time.time()
     W_Ah = np.zeros(W_A.shape)
     np.fill_diagonal(W_Ah, 1./ (W_A.diagonal() ** 0.5))
@@ -88,30 +90,22 @@ def Orthogonalization(W_A, W_AB):
     print('Orthogonalization done in {}s'.format(time.time() - start))
     return V, Lambda
 
-def display_affinity_matrix(M, N, phi, Pi, sample_indices, pixel_x, pixel_y):
-    # Permute pixel order in eigenvectors of affinity matrix
-    phi = Permutation(phi, sample_indices)
 
-    affinity_pixel = xy2num(pixel_x, pixel_y, M, N)
-    K_pixel = np.dot((phi[affinity_pixel, :] * Pi), phi.T).reshape(M, N)
-    # TODO if save
-    plt.imsave(
-        'results/affinity_{0}x{1}.jpg'.format(pixel_x, pixel_y),
-        K_pixel,
-        vmin=0,
-        vmax=1,
-        cmap='RdBu_r')
+def compute_and_display_affinity_matrix(M, N, phi, Pi, pixel_x, pixel_y):
+    concerned_pixel = xy2num(pixel_x, pixel_y, M, N)
+
+    K_pixel = np.dot((phi[concerned_pixel, :] * Pi), phi.T)  # One line of K
+    K_pixel = K_pixel.reshape(M, N)
+
+    display_or_save('affinity_{0}x{1}.jpg'.format(pixel_x, pixel_y), K_pixel, vmin=0, vmax=1, cmap='RdBu_r')
     logger.info('Displayed affinity matrix of pixel {0}x{1}'.format(pixel_x, pixel_y))
 
 
-def adaptive_sharpening(y, cr, cb, phi, Pi):
+def adaptive_sharpening(y, cr, cb, phi, Pi, beta, beta_crcb):
     start = time.time()
     M, N = y.shape[:2]
     num_pixels = M * N
     alpha = 1./num_pixels
-
-    beta = 1.5
-    beta_crcb = 0.5
 
     y_vector = y.reshape(num_pixels)
     cr_vector_init = cr.reshape(num_pixels)
@@ -133,8 +127,6 @@ def adaptive_sharpening(y, cr, cb, phi, Pi):
         f_i_crcb = (1 + beta_crcb)*w_i2 - beta_crcb*w_i3
         cr_vector[i] = np.dot(f_i_crcb, cr_vector_init)
         cb_vector[i] = np.dot(f_i_crcb, cb_vector_init)
-        if i%1000 == 0:
-            print(i)
 
     z = z_vector.reshape(M, N)
     cr = cr_vector.reshape(M, N)
@@ -142,6 +134,46 @@ def adaptive_sharpening(y, cr, cb, phi, Pi):
     print('Adaptive sharpening done in {0}s'.format(time.time() - start))
     return z, cr, cb
 
+
+def sharpening_full_matrix(y, cr, cb, phi, Pi, beta, beta_crcb):
+    start = time.time()
+    M, N = y.shape[:2]
+    alpha = 1./ (M*N)
+
+    k = np.dot((phi * Pi), phi.T)
+    d = np.diag(np.sum(k, axis=0))
+    i = np.identity(k.shape[0])
+
+    W = i - alpha*(d-k)
+    W2 = W ** 2
+    W3 = W2 * W
+
+    F = (1+beta)*W2 - beta*W3
+    F_crcb = (1+beta_crcb)*W2 - beta_crcb*W3
+
+    z = np.dot(F, y.reshape(M*N)).reshape(M, N)
+    cr = np.dot(F_crcb, cr.reshape(M*N)).reshape(M, N)
+    cb = np.dot(F_crcb, cb.reshape(M*N)).reshape(M, N)
+    logger.info('Sharpening full matrix done in {}s'.format(time.time() - start))
+    return z, cr, cb
+
+
+def denoising(y, phi, Pi):
+    start = time.time()
+    M, N = y.shape[:2]
+    num_pixels = M*N
+    alpha = 1./num_pixels
+    y_vector = y.reshape(num_pixels)
+    z_vector = np.empty(num_pixels)
+
+    k = np.dot((phi * Pi), phi.T)
+    d = np.diag(np.sum(k, axis=0))
+
+    z_vector = np.dot(alpha*(d-k), y_vector)
+
+    z = z_vector.reshape(M, N)
+    logger.info('Sharpening full matrix done in {}s'.format(time.time() - start))
+    return z
 
 def image_processing(y, cr, cb, **kwargs):
     start = time.time()
@@ -161,73 +193,22 @@ def image_processing(y, cr, cb, **kwargs):
     phi, Pi = Nystroem(y, sample_indices, affinity_function)
 
     # Display affinity vector of a pixel
-    #display_affinity_matrix(M, N, phi, Pi, sample_indices, 80, 120)
-    #display_affinity_matrix(M, N, phi, Pi, sample_indices, 165, 65)
-    display_affinity_matrix(M, N, phi, Pi, sample_indices, 30, 30)
-    display_affinity_matrix(M, N, phi, Pi, sample_indices, 125, 125)
-
-    #V = Permutation(V, sample_indices)
-    #z = np.dot(
-    #    V,
-    #    ((Lambda.T) * np.dot(V.T, y.reshape(M*N)))).reshape(M, N)
+    #compute_and_display_affinity_matrix(M, N, Permutation(phi, sample_indices), Pi, 80, 120)
+    #compute_and_display_affinity_matrix(M, N, Permutation(phi, sample_indices), Pi, 165, 65)
+    compute_and_display_affinity_matrix(M, N, Permutation(phi, sample_indices), Pi, 30, 30)
+    compute_and_display_affinity_matrix(M, N, Permutation(phi, sample_indices), Pi, 125, 125)
     
-    # Display eigenvalues
-    # TODO
-    #plt.figure(5)
-    #plt.plot(Lambda[:10])
-    #np.savetxt('results/eigenvalues.txt', Lambda[:50])
-    #V = Permutation(V, sample_indices)
-    #plt.figure(6)
-    #plt.imshow(V[:, 0].reshape(N, M).T, cmap='gray')
-    #plt.imsave('results/eigenvector1.jpg', V[:, 0].reshape(M, N), cmap='gray')
-    #plt.figure(7)
-    #plt.imshow(V[:, 1].reshape(N, M).T, cmap='gray')
-    #plt.imsave('results/eigenvector2.jpg', V[:, 1].reshape(M, N), cmap='gray')
-    #plt.figure(8)
-    #plt.imshow(V[:, 2].reshape(N, M).T, cmap='gray')
-    #plt.imsave('results/eigenvector3.jpg', V[:, 2].reshape(M, N), cmap='gray')
-    #plt.figure(9)
-    #plt.imshow(V[:, 3].reshape(N, M).T, cmap='gray')
-    #plt.imsave('results/eigenvector4.jpg', V[:, 3].reshape(M, N), cmap='gray')
-
-    # TODO Display filter eigenvector
-    #z = np.dot(
-    #    V,
-    #    ((Lambda.T) * np.dot(V.T, y.reshape(M*N)))).reshape(M, N)
-    phi = Permutation(phi, sample_indices)
-
     # Denoising
-    num_pixels = M*N
-    alpha = 1./num_pixels
-    y_vector = y.reshape(num_pixels)
-    z_vector = np.empty(num_pixels)
-    k = np.dot((phi * Pi), phi.T)
-    d = np.diag(np.sum(k, axis=0))
-    z_vector = np.dot(alpha*(d-k), y_vector)
-    z = z_vector.reshape(M, N)
-    #for i in range(num_pixels):
-
-    #    k_i = np.dot((phi[i, :] * Pi), phi.T)
-    #    d_i = sum(k_i)
-    #    z_vector[i] = np.dot((1 - alpha*(d_i - k_i)), y_vector)
-    #    print(i)
-    #z = z_vector.reshape(M, N)  # To matrix/image
-    """alpha = 1./ (M*N) beta = 1.6 beta_crcb = 0.6
-    k = np.dot((phi * Pi), phi.T)
-    d = np.diag(np.sum(k, axis=0))
-    alpha = 1./(M*N)
-    i = np.identity(k.shape[0])
-    W = i - alpha*(d-k)
-    W2 = W ** 2
-    W3 = W2 * W
-    F = (1+beta)*W2 - beta*W3
-    F_crcb = (1+beta_crcb)*W2 - beta_crcb*W3
-    z = np.dot(F, y.reshape(M*N)).reshape(M, N)
-    cr = np.dot(F_crcb, cr.reshape(M*N)).reshape(M, N)
-    cb = np.dot(F_crcb, cb.reshape(M*N)).reshape(M, N)"""
+    #z = Denoising(Permutation(phi, sample_indices), Pi)
 
     # Sharpening
-    #z, cr, cb = adaptive_sharpening(y, cr, cb, phi, Pi)
+    beta = 1.6
+    beta_crcb = 0.6
+    z, cr, cb = sharpening_full_matrix(y, cr, cb, Permutation(phi, sample_indices), Pi, beta, beta_crcb)
+
+    # Sharpening
+    #z, cr, cb = adaptive_sharpening(y, cr, cb, phi, Pi, beta, beta_crcb)
+
     print('Program done in {}s'.format(time.time() - start))
     return z, cr, cb
 
@@ -238,6 +219,14 @@ def set_up_logging():
     ch = logging.StreamHandler(sys.stdout)
     ch.setLevel(logging.INFO)
     root.addHandler(ch)
+
+
+def display_or_save(name, img, cmap=None, vmin=None, vmax=None):
+    global save_image
+    if save_image:
+        plt.imsave('results/{0}'.format(name), img, cmap=cmap, vmin=vmin, vmax=vmax)
+    else:
+        plt.imshow(img, cmap=cmap, vmin=vmin, vmax=vmax)
 
 
 if __name__ == '__main__':
@@ -253,13 +242,15 @@ if __name__ == '__main__':
         action='store_true')
 
     args = parser.parse_args()
+    global save_image
+    save_image = args.save
 
     set_up_logging()
 
     #img_name = 'input/flower_noisy.jpg'
     #img_name = 'input/flower_blurry.jpg'
-    img_name = 'input/mountain_noisy.jpg'
-    #img_name = 'input/mountain.jpg'
+    #img_name = 'input/mountain_noisy.jpg'
+    img_name = 'input/mountain.jpg'
     #img_name = 'input/mountain_noisy_hand2.jpg'
     #img_name = 'input/Lena.png'
     #img_name = 'input/house.jpg'
@@ -272,7 +263,7 @@ if __name__ == '__main__':
     print("Image '{0}' has shape {1} => {2} pixels".format(img_name, y.shape, y.shape[0]*y.shape[1]))
     if len(y.shape) == 2:  # Detect gray scale
         z = image_processing(y)
-        plt.imsave('results/output.jpg', z.astype(np.uint8, copy=False), cmap='gray')
+        display_or_save('output.jpg', z.astype(np.uint8, copy=False), cmap='gray')
     else:
         y = rgb2ycc(y)
         y_ycc = y[:, :, 0]
@@ -289,24 +280,19 @@ if __name__ == '__main__':
         y = ycc2rgb(y)
         z = ycc2rgb(z)
 
-        plt.imsave('results/y_ycc.jpg', y_ycc, cmap='gray')
-        plt.imsave('results/y_cr.jpg', y_cr, cmap='gray')
-        plt.imsave('results/y_cb.jpg', y_cb, cmap='gray')
-        plt.imsave('results/z_ycc.jpg', z_ycc, cmap='gray')
-        plt.imsave('results/z_cr.jpg', z_cr, cmap='gray')
-        plt.imsave('results/z_cb.jpg', z_cb, cmap='gray')
+        display_or_save('y_ycc.jpg', y_ycc, cmap='gray')
+        display_or_save('y_cr.jpg', y_cr, cmap='gray')
+        display_or_save('y_cb.jpg', y_cb, cmap='gray')
+        display_or_save('z_ycc.jpg', z_ycc, cmap='gray')
+        display_or_save('z_cr.jpg', z_cr, cmap='gray')
+        display_or_save('z_cb.jpg', z_cb, cmap='gray')
 
-        if args.save:
-            plt.imsave('results/input.jpg', y.astype(np.uint8, copy=False))
-            plt.imsave('results/output.jpg', z.astype(np.uint8, copy=False))
-        else:
-            plt.figure(1)
-            Nlt.imshow(y.astype(np.uint8, copy=False))
+        display_or_save('input.jpg', y.astype(np.uint8, copy=False))
+        display_or_save('output.jpg', z.astype(np.uint8, copy=False))
 
-            plt.figure(2)
-            plt.imshow(z.astype(np.uint8, copy=False))
-            plt.show()
+        # Residuals
+        r = np.abs(y_ycc - z_ycc)
+        display_or_save('residuals.jpg', r, cmap='gray')
 
-    # Residuals
-    r = np.abs(y_ycc - z_ycc)
-    plt.imsave('results/residuals.jpg', r, cmap='gray')
+    if not save_image:
+        plt.show()
