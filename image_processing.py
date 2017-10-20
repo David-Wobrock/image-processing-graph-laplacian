@@ -101,6 +101,16 @@ def compute_and_display_affinity_matrix(M, N, phi, Pi, pixel_x, pixel_y):
     logger.info('Displayed affinity matrix of pixel {0}x{1}'.format(pixel_x, pixel_y))
 
 
+def degree_and_display_pixel_degree(M, N, phi, Pi):
+    start = time.time()
+    D = np.empty(M*N)
+    for i in range(M*N):
+        D[i] = np.sum(np.dot((phi[i, :] * Pi), phi.T))
+    D = D.reshape(M, N)
+    display_or_save('pixel_degrees.png', D, cmap='RdBu_r')
+    logger.info('Displayed degrees of pixels matrix in {0}s'.format(time.time() - start))
+
+
 def adaptive_sharpening(y, cr, cb, phi, Pi, beta, beta_crcb):
     start = time.time()
     M, N = y.shape[:2]
@@ -199,6 +209,7 @@ def image_processing(y, cr=None, cb=None, **kwargs):
     #compute_and_display_affinity_matrix(M, N, phi, Pi, 165, 65)
     compute_and_display_affinity_matrix(M, N, phi, Pi, 30, 30)
     compute_and_display_affinity_matrix(M, N, phi, Pi, 125, 125)
+    degree_and_display_pixel_degree(M, N, phi, Pi)
     
     # Denoising
     #z = Denoising(y, phi, Pi)
@@ -235,10 +246,6 @@ def display_or_save(name, img, cmap=None, vmin=None, vmax=None):
 
 if __name__ == '__main__':
     import argparse
-    # TODO command line tool for selecting different
-    # variations
-    # + name of the input picture
-    # + display result or save it to file
     parser = argparse.ArgumentParser(
         description='Image Processing using Graph Laplacian Operator')
     parser.add_argument(

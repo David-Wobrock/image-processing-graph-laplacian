@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 def photometric_affinity(y, sample_indices):
     start = time.time()
     M, N = y.shape[:2]
-    h = 3.
+    h = 5.
 
     all_values = np.asarray(y.reshape(M*N), dtype=np.float64)
 
