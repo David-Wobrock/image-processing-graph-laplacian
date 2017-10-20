@@ -42,13 +42,13 @@ def Nystroem(y, sample_indices, affinity_function):
     K_A = AB[:, sample_indices]
     v = np.asarray(range(M*N))
     v = np.delete(v, sample_indices)
-    K_AB = AB[:, v]
+    K_B = AB[:, v]
 
     phi_A, Pi, _ = svd(K_A)
     phi = np.concatenate((
         phi_A,
         np.dot(
-            np.dot(K_AB.T, phi_A),
+            np.dot(K_B.T, phi_A),
             np.linalg.inv(np.diag(Pi)))))
 
     print('Nystrom done in {0}s'.format(time.time() - start))
@@ -97,7 +97,7 @@ def compute_and_display_affinity_matrix(M, N, phi, Pi, pixel_x, pixel_y):
     K_pixel = np.dot((phi[concerned_pixel, :] * Pi), phi.T)  # One line of K
     K_pixel = K_pixel.reshape(M, N)
 
-    display_or_save('affinity_{0}x{1}.jpg'.format(pixel_x, pixel_y), K_pixel, vmin=0, vmax=1, cmap='RdBu_r')
+    display_or_save('affinity_{0}x{1}.png'.format(pixel_x, pixel_y), K_pixel, vmin=0, vmax=1, cmap='RdBu_r')
     logger.info('Displayed affinity matrix of pixel {0}x{1}'.format(pixel_x, pixel_y))
 
 
@@ -158,7 +158,7 @@ def sharpening_full_matrix(y, cr, cb, phi, Pi, beta, beta_crcb):
     return z, cr, cb
 
 
-def denoising(y, phi, Pi):
+def Denoising(y, phi, Pi):
     start = time.time()
     M, N = y.shape[:2]
     num_pixels = M*N
@@ -175,7 +175,8 @@ def denoising(y, phi, Pi):
     logger.info('Sharpening full matrix done in {}s'.format(time.time() - start))
     return z
 
-def image_processing(y, cr, cb, **kwargs):
+
+def image_processing(y, cr=None, cb=None, **kwargs):
     start = time.time()
     M, N = y.shape[:2]
 
@@ -192,19 +193,20 @@ def image_processing(y, cr, cb, **kwargs):
     affinity_function = affinity_methods.methods[affinity_code]
     phi, Pi = Nystroem(y, sample_indices, affinity_function)
 
+    phi = Permutation(phi, sample_indices)
     # Display affinity vector of a pixel
-    #compute_and_display_affinity_matrix(M, N, Permutation(phi, sample_indices), Pi, 80, 120)
-    #compute_and_display_affinity_matrix(M, N, Permutation(phi, sample_indices), Pi, 165, 65)
-    compute_and_display_affinity_matrix(M, N, Permutation(phi, sample_indices), Pi, 30, 30)
-    compute_and_display_affinity_matrix(M, N, Permutation(phi, sample_indices), Pi, 125, 125)
+    #compute_and_display_affinity_matrix(M, N, phi, Pi, 80, 120)
+    #compute_and_display_affinity_matrix(M, N, phi, Pi, 165, 65)
+    compute_and_display_affinity_matrix(M, N, phi, Pi, 30, 30)
+    compute_and_display_affinity_matrix(M, N, phi, Pi, 125, 125)
     
     # Denoising
-    #z = Denoising(Permutation(phi, sample_indices), Pi)
+    #z = Denoising(y, phi, Pi)
 
-    # Sharpening
+    # Sharpening full matrix
     beta = 1.6
     beta_crcb = 0.6
-    z, cr, cb = sharpening_full_matrix(y, cr, cb, Permutation(phi, sample_indices), Pi, beta, beta_crcb)
+    z, cr, cb = sharpening_full_matrix(y, cr, cb, phi, Pi, beta, beta_crcb)
 
     # Sharpening
     #z, cr, cb = adaptive_sharpening(y, cr, cb, phi, Pi, beta, beta_crcb)
@@ -226,7 +228,9 @@ def display_or_save(name, img, cmap=None, vmin=None, vmax=None):
     if save_image:
         plt.imsave('results/{0}'.format(name), img, cmap=cmap, vmin=vmin, vmax=vmax)
     else:
+        fig = plt.figure()
         plt.imshow(img, cmap=cmap, vmin=vmin, vmax=vmax)
+        fig.suptitle(name)
 
 
 if __name__ == '__main__':
@@ -238,32 +242,26 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Image Processing using Graph Laplacian Operator')
     parser.add_argument(
+        'image_name',
+        type=str,
+        nargs=1)
+    parser.add_argument(
         '-save',
         action='store_true')
 
     args = parser.parse_args()
     global save_image
     save_image = args.save
+    img_name = args.image_name[0]
 
     set_up_logging()
-
-    #img_name = 'input/flower_noisy.jpg'
-    #img_name = 'input/flower_blurry.jpg'
-    #img_name = 'input/mountain_noisy.jpg'
-    img_name = 'input/mountain.jpg'
-    #img_name = 'input/mountain_noisy_hand2.jpg'
-    #img_name = 'input/Lena.png'
-    #img_name = 'input/house.jpg'
-    #img_name = 'input/small_house.jpg'
-    #img_name = 'input/beach.jpg'
-    #img_name = 'input/theatre_noisy.jpg'
-    #img_name = 'input/guy.png'
 
     y = misc.imread(img_name)
     print("Image '{0}' has shape {1} => {2} pixels".format(img_name, y.shape, y.shape[0]*y.shape[1]))
     if len(y.shape) == 2:  # Detect gray scale
-        z = image_processing(y)
-        display_or_save('output.jpg', z.astype(np.uint8, copy=False), cmap='gray')
+        z = image_processing(y)[0]
+        display_or_save('input.png', y, cmap='gray')
+        display_or_save('output.png', z.astype(np.uint8, copy=False), cmap='gray')
     else:
         y = rgb2ycc(y)
         y_ycc = y[:, :, 0]
@@ -280,19 +278,19 @@ if __name__ == '__main__':
         y = ycc2rgb(y)
         z = ycc2rgb(z)
 
-        display_or_save('y_ycc.jpg', y_ycc, cmap='gray')
-        display_or_save('y_cr.jpg', y_cr, cmap='gray')
-        display_or_save('y_cb.jpg', y_cb, cmap='gray')
-        display_or_save('z_ycc.jpg', z_ycc, cmap='gray')
-        display_or_save('z_cr.jpg', z_cr, cmap='gray')
-        display_or_save('z_cb.jpg', z_cb, cmap='gray')
+        display_or_save('y_ycc.png', y_ycc, cmap='gray')
+        display_or_save('y_cr.png', y_cr, cmap='gray')
+        display_or_save('y_cb.png', y_cb, cmap='gray')
+        display_or_save('z_ycc.png', z_ycc, cmap='gray')
+        display_or_save('z_cr.png', z_cr, cmap='gray')
+        display_or_save('z_cb.png', z_cb, cmap='gray')
 
-        display_or_save('input.jpg', y.astype(np.uint8, copy=False))
-        display_or_save('output.jpg', z.astype(np.uint8, copy=False))
+        display_or_save('input.png', y.astype(np.uint8, copy=False))
+        display_or_save('output.png', z.astype(np.uint8, copy=False))
 
         # Residuals
         r = np.abs(y_ycc - z_ycc)
-        display_or_save('residuals.jpg', r, cmap='gray')
+        display_or_save('residuals.png', r, cmap='gray')
 
     if not save_image:
         plt.show()
