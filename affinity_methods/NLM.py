@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 def NLM_affinity(y, sample_indices):
     start = time.time()
     M, N = y.shape[:2]
-    h = 5.
+    h = 3.
     ksz = 7
     kRad = int((ksz - 1)/2)
 

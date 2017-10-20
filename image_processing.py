@@ -197,20 +197,22 @@ def image_processing(y, cr, cb, **kwargs):
     phi = Permutation(phi, sample_indices)
 
     # Denoising
-    #num_pixels = M*N
-    #alpha = 1./num_pixels
-    #y_vector = y.reshape(num_pixels)
-    #z_vector = np.empty(num_pixels)
+    num_pixels = M*N
+    alpha = 1./num_pixels
+    y_vector = y.reshape(num_pixels)
+    z_vector = np.empty(num_pixels)
+    k = np.dot((phi * Pi), phi.T)
+    d = np.diag(np.sum(k, axis=0))
+    z_vector = np.dot(alpha*(d-k), y_vector)
+    z = z_vector.reshape(M, N)
     #for i in range(num_pixels):
+
     #    k_i = np.dot((phi[i, :] * Pi), phi.T)
     #    d_i = sum(k_i)
     #    z_vector[i] = np.dot((1 - alpha*(d_i - k_i)), y_vector)
     #    print(i)
     #z = z_vector.reshape(M, N)  # To matrix/image
-    alpha = 1./ (M*N)
-    beta = 1.5
-    beta_crcb = 0.5
-
+    """alpha = 1./ (M*N) beta = 1.6 beta_crcb = 0.6
     k = np.dot((phi * Pi), phi.T)
     d = np.diag(np.sum(k, axis=0))
     alpha = 1./(M*N)
@@ -222,7 +224,7 @@ def image_processing(y, cr, cb, **kwargs):
     F_crcb = (1+beta_crcb)*W2 - beta_crcb*W3
     z = np.dot(F, y.reshape(M*N)).reshape(M, N)
     cr = np.dot(F_crcb, cr.reshape(M*N)).reshape(M, N)
-    cb = np.dot(F_crcb, cb.reshape(M*N)).reshape(M, N)
+    cb = np.dot(F_crcb, cb.reshape(M*N)).reshape(M, N)"""
 
     # Sharpening
     #z, cr, cb = adaptive_sharpening(y, cr, cb, phi, Pi)
@@ -256,13 +258,13 @@ if __name__ == '__main__':
 
     #img_name = 'input/flower_noisy.jpg'
     #img_name = 'input/flower_blurry.jpg'
-    #img_name = 'input/mountain_noisy.jpg'
+    img_name = 'input/mountain_noisy.jpg'
     #img_name = 'input/mountain.jpg'
     #img_name = 'input/mountain_noisy_hand2.jpg'
     #img_name = 'input/Lena.png'
     #img_name = 'input/house.jpg'
     #img_name = 'input/small_house.jpg'
-    img_name = 'input/beach.jpg'
+    #img_name = 'input/beach.jpg'
     #img_name = 'input/theatre_noisy.jpg'
     #img_name = 'input/guy.png'
 
@@ -297,12 +299,6 @@ if __name__ == '__main__':
         if args.save:
             plt.imsave('results/input.jpg', y.astype(np.uint8, copy=False))
             plt.imsave('results/output.jpg', z.astype(np.uint8, copy=False))
-            z_test = z.copy()
-            z_test[:, :, 1] = z_ycc
-            z_test[:, :, 1] = y_cr
-            z_test[:, :, 2] = y_cb
-            z_test = ycc2rgb(z_test)
-            plt.imsave('results/output2.jpg', z_test.astype(np.uint8, copy=False))
         else:
             plt.figure(1)
             Nlt.imshow(y.astype(np.uint8, copy=False))
