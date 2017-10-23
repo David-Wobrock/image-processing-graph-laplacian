@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 def spatial_affinity(y, sample_indices):
     start = time.time()
     M, N = y.shape[:2]
-    h = 1.
+    h = 25.
 
     all_coords = np.asarray(
         [[a, b] for a in range(M) for b in range(N)])

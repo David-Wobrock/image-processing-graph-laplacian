@@ -10,7 +10,7 @@ def bilateral_affinity(y, sample_indices):
     start = time.time()
     M, N = y.shape[:2]
     h_photo = 10.
-    h_spatial = 20.
+    h_spatial = 40.
 
     all_coords = np.asarray(
         [[a, b] for a in range(M) for b in range(N)])

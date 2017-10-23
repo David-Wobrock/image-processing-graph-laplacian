@@ -29,7 +29,7 @@ def Permutation(phi, sample_indices):
         else:
             correct_indices[i] = k2
             k2 += 1
-    print('Permutation done in {}s'.format(time.time() - start))
+    logger.info('Permutation done in {0}s'.format(time.time() - start))
     return phi[correct_indices, :]
 
 
@@ -51,7 +51,7 @@ def Nystroem(y, sample_indices, affinity_function):
             np.dot(K_B.T, phi_A),
             np.linalg.inv(np.diag(Pi)))))
 
-    print('Nystrom done in {0}s'.format(time.time() - start))
+    logger.info('Nystrom done in {0}s'.format(time.time() - start))
     return phi, Pi
 
 
@@ -69,7 +69,7 @@ def Sinkhorn(phi, Pi):
         ABw[i, :] = np.dot((r[i] * (Pi.T * phi[i, :])), v.T)
     W_A = ABw[:, :N]
     W_AB = ABw[:, N:M]
-    print('Sinkhorn done in {}s'.format(time.time() - start))
+    logger.info('Sinkhorn done in {0}s'.format(time.time() - start))
     return W_A, W_AB
 
 
@@ -87,7 +87,7 @@ def Orthogonalization(W_A, W_AB):
 
     Lambda = L
     Lambda[Lambda>1] = 1
-    print('Orthogonalization done in {}s'.format(time.time() - start))
+    logger.info('Orthogonalization done in {0}s'.format(time.time() - start))
     return V, Lambda
 
 
@@ -101,11 +101,12 @@ def compute_and_display_affinity_matrix(M, N, phi, Pi, pixel_x, pixel_y):
     logger.info('Displayed affinity matrix of pixel {0}x{1}'.format(pixel_x, pixel_y))
 
 
-def degree_and_display_pixel_degree(M, N, phi, Pi):
+def compute_and_display_pixel_degree(M, N, phi, Pi):
     start = time.time()
     D = np.empty(M*N)
-    for i in range(M*N):
-        D[i] = np.sum(np.dot((phi[i, :] * Pi), phi.T))
+    D = np.sum(np.dot((phi * Pi), phi.T), axis=0)
+    #for i in range(M*N):
+    #    D[i] = np.sum(np.dot((phi[i, :] * Pi), phi.T))
     D = D.reshape(M, N)
     display_or_save('pixel_degrees.png', D, cmap='RdBu_r')
     logger.info('Displayed degrees of pixels matrix in {0}s'.format(time.time() - start))
@@ -141,7 +142,7 @@ def adaptive_sharpening(y, cr, cb, phi, Pi, beta, beta_crcb):
     z = z_vector.reshape(M, N)
     cr = cr_vector.reshape(M, N)
     cb = cb_vector.reshape(M, N)
-    print('Adaptive sharpening done in {0}s'.format(time.time() - start))
+    logger.info('Adaptive sharpening done in {0}s'.format(time.time() - start))
     return z, cr, cb
 
 
@@ -164,7 +165,7 @@ def sharpening_full_matrix(y, cr, cb, phi, Pi, beta, beta_crcb):
     z = np.dot(F, y.reshape(M*N)).reshape(M, N)
     cr = np.dot(F_crcb, cr.reshape(M*N)).reshape(M, N)
     cb = np.dot(F_crcb, cb.reshape(M*N)).reshape(M, N)
-    logger.info('Sharpening full matrix done in {}s'.format(time.time() - start))
+    logger.info('Sharpening full matrix done in {0}s'.format(time.time() - start))
     return z, cr, cb
 
 
@@ -205,11 +206,12 @@ def image_processing(y, cr=None, cb=None, **kwargs):
 
     phi = Permutation(phi, sample_indices)
     # Display affinity vector of a pixel
-    #compute_and_display_affinity_matrix(M, N, phi, Pi, 80, 120)
     #compute_and_display_affinity_matrix(M, N, phi, Pi, 165, 65)
+    #compute_and_display_affinity_matrix(M, N, phi, Pi, 80, 120)
     compute_and_display_affinity_matrix(M, N, phi, Pi, 30, 30)
     compute_and_display_affinity_matrix(M, N, phi, Pi, 125, 125)
-    degree_and_display_pixel_degree(M, N, phi, Pi)
+    compute_and_display_pixel_degree(M, N, phi, Pi)
+    z = y
     
     # Denoising
     #z = Denoising(y, phi, Pi)
@@ -217,12 +219,12 @@ def image_processing(y, cr=None, cb=None, **kwargs):
     # Sharpening full matrix
     beta = 1.6
     beta_crcb = 0.6
-    z, cr, cb = sharpening_full_matrix(y, cr, cb, phi, Pi, beta, beta_crcb)
+    #z, cr, cb = sharpening_full_matrix(y, cr, cb, phi, Pi, beta, beta_crcb)
 
     # Sharpening
     #z, cr, cb = adaptive_sharpening(y, cr, cb, phi, Pi, beta, beta_crcb)
 
-    print('Program done in {}s'.format(time.time() - start))
+    logger.info('Program done in {0}s'.format(time.time() - start))
     return z, cr, cb
 
 
@@ -264,7 +266,7 @@ if __name__ == '__main__':
     set_up_logging()
 
     y = misc.imread(img_name)
-    print("Image '{0}' has shape {1} => {2} pixels".format(img_name, y.shape, y.shape[0]*y.shape[1]))
+    logger.info("Image '{0}' has shape {1} => {2} pixels".format(img_name, y.shape, y.shape[0]*y.shape[1]))
     if len(y.shape) == 2:  # Detect gray scale
         z = image_processing(y)[0]
         display_or_save('input.png', y, cmap='gray')
