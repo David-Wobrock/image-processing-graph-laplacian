@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 def random_sample(M, N, num_samples):
     start = time.time()
-    sample_indices = set(np.random.randint(0, M*N, num_samples, dtype='uint32'))
+    sample_indices = set(np.random.randint(0, M*N, num_samples))
     while len(sample_indices) < num_samples:
         sample_indices.add(np.random.randint(0, int(M*N)))
     sample_indices = np.sort(list(sample_indices))

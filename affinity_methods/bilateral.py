@@ -9,8 +9,8 @@ logger = logging.getLogger(__name__)
 def bilateral_affinity(y, sample_indices):
     start = time.time()
     M, N = y.shape[:2]
-    h_photo = 10.
-    h_spatial = 40.
+    h_photo = 1.6
+    h_spatial = 3.
 
     all_coords = np.asarray(
         [[a, b] for a in range(M) for b in range(N)])

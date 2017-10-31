@@ -204,12 +204,12 @@ def GLIDE(y):
 
 
 if __name__ == '__main__':
-    img_name = 'flower.jpg'
+    img_name = 'input/flower.jpg'
     x = misc.imread(img_name).astype(np.double)
     print(x.shape)
 
     # Noising
-    sigma = 100
+    sigma = 50
     y = x + np.dot(
         np.random.random_sample(x.shape),
         sigma)
