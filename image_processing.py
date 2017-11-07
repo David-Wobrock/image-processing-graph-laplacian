@@ -81,10 +81,13 @@ def Orthogonalization(W_A, W_AB):
     # Adapted from GLIDE, by Milanfar
     start = time.time()
     W_Ah = sqrtm(np.linalg.pinv(W_A))
-    Q = W_A + np.dot(W_Ah, W_AB).dot(W_AB.T).dot(W_Ah)
+    #W_Ah = sqrtm(np.linalg.inv(W_A))
+    #W_Ah = np.linalg.inv(np.sqrt(W_A))
+    Q = W_A + (W_Ah.dot(W_AB).dot(W_AB.T).dot(W_Ah))
 
     U, L, _ = svd(Q)
     Lh = np.linalg.pinv(np.sqrt(np.diag(L)))
+    #Lh = np.linalg.inv(np.sqrt(np.diag(L)))
     V = np.concatenate((W_A, W_AB.T)).dot(W_Ah).dot(U).dot(Lh)
 
     Lambda = L
@@ -94,19 +97,16 @@ def Orthogonalization(W_A, W_AB):
 
 def orthogonalisation(A, B):
     start = time.time()
-    A_sqrt_inv = np.diag(1. / np.sqrt(A.diagonal()))
-    #A_sqrt_inv = 1. / np.sqrt(A)
-    #A_sqrt_inv = sqrtm(np.linalg.pinv(A))
+    A_sqrt_inv = np.linalg.inv(np.sqrt(A))
 
-    S = A + A_sqrt_inv.dot(B).dot(B.T).dot(A_sqrt_inv)
-    phi_S, Pi_S, _ = svd(S)
+    Q = A + A_sqrt_inv.dot(B).dot(B.T).dot(A_sqrt_inv)
+    phi_Q, Pi_Q, _ = svd(Q)
 
-    #Pi_S_sqrt_inv = np.linalg.pinv(np.sqrt(np.diag(Pi_S)))
-    Pi_S_sqrt_inv = np.diag(1./(np.sqrt(Pi_S)))
+    Pi_Q_sqrt_inv = np.diag(1./(np.sqrt(Pi_Q)))
 
-    V = np.concatenate((A, B.T)).dot(A_sqrt_inv).dot(phi_S).dot(Pi_S_sqrt_inv)
-    Pi = Pi_S
-    #Pi[Pi>1] = 1
+    V = np.concatenate((A, B.T)).dot(A_sqrt_inv).dot(phi_Q).dot(Pi_Q_sqrt_inv)
+    Pi = Pi_Q
+    Pi[Pi>1] = 1
 
     logger.info('Orthogonalisation done in {0}s'.format(time.time() - start))
     return V, Pi
@@ -196,27 +196,30 @@ def smoothing(y, sample_indices, phi, Pi):
     num_pixels = M*N
     sample_size = len(sample_indices)
 
-    alpha = 1./num_pixels
     y_vector = y.reshape(num_pixels)
     z_vector = np.empty(num_pixels)
 
-    #K = np.dot((phi * Pi), phi.T)
+    #K = phi.dot(np.diag(Pi)).dot(phi.T)
     #D = np.diag(np.sum(K, axis=0))
-    #Lapl = alpha * (D-K)
-    #W = np.identity(num_pixels) - Lapl
-    #z_vector = W.dot(y_vector)
-    #return z_vector.reshape(M, N)
+    #alpha = 1./np.mean(np.diag(D))
+    #W = np.identity(num_pixels) + alpha * (K - D)
+    #z_vector2 = W.dot(y_vector)
+    #return z_vector2.reshape(M, N)
 
     W_AB = np.empty((sample_size, num_pixels))
+    ident = np.zeros((sample_size, num_pixels))
+    sum_D = 0
     # *** Fill W_AB
     for i, sample_idx in enumerate(sample_indices):
         k_i = np.dot((phi[sample_idx, :] * Pi), phi.T)
         d_i = np.zeros(num_pixels)
         d_i[sample_idx] = sum(k_i)
-        ident_i = np.zeros(num_pixels)
-        ident_i[sample_idx] = 1.
-        W_AB[i, :] = ident_i - alpha * (d_i - k_i)
+        sum_D += sum(k_i)
+        ident[i, sample_idx] = 1.
+        #W_AB[i, :] = k_i - d_i
 
+    alpha = 1./(sum_D/sample_size)
+    W_AB = ident + (alpha * W_AB)
     #W_AB[W_AB<0] = 0
     W_A = W_AB[:, sample_indices]
     v = np.asarray(range(num_pixels))
@@ -224,14 +227,6 @@ def smoothing(y, sample_indices, phi, Pi):
     W_B = W_AB[:, v]
 
     phi, Pi = orthogonalisation(W_A, W_B)
-    #phi_A, Pi, _ = svd(W_A)
-    #phi = np.concatenate((
-    #    phi_A,
-    #    np.dot(
-    #        np.dot(W_B.T, phi_A),
-    #        np.linalg.inv(np.diag(Pi)))))
-
-    # TODO phi orthonormal ?????? why?
     phi = permutation(phi, sample_indices)
 
     plt.figure()
@@ -274,10 +269,10 @@ def image_processing(y, cr=None, cb=None, **kwargs):
     # Sampling
     sampling_code = kwargs.get('sampling', sampling.SPATIALLY_UNIFORM)
     sampling_function = sampling.methods[sampling_code]
-    #sample_size = int(M*N*0.001)
+    #sample_size = int(M*N*0.01)
     sample_size = 200
     sample_indices = sampling_function(M, N, sample_size)
-    logger.info('Number of sample pixels: Theory {0} / Real {1}'.format(sample_size, len(sample_indices)))
+    logger.info('Number of sample pixels: Theory {0} / Real {1} (or {2:.2f}% of the all pixels)'.format(sample_size, len(sample_indices), (len(sample_indices)*100.)/(M*N)))
 
     # Nystroem
     affinity_code = kwargs.get('affinity', affinity_methods.PHOTOMETRIC)
@@ -302,7 +297,7 @@ def image_processing(y, cr=None, cb=None, **kwargs):
     #W_A, W_B = Sinkhorn(phi, Pi)
     #V, L = Orthogonalization(W_A, W_B)
     #V = permutation(V, sample_indices)
-    #z = np.dot(V, L * np.dot(V.T, y.reshape(M*N))).reshape(M, N)
+    #Z = np.dot(V, L * np.dot(V.T, y.reshape(M*N))).reshape(M, N)
 
     # Denoising
     #z = denoising(y, phi, Pi)
@@ -337,6 +332,11 @@ def display_or_save(name, img, cmap=None, vmin=None, vmax=None):
         fig.suptitle(name)
 
 
+def residuals(y, z):
+    r = np.abs(y - z)
+    display_or_save('residuals.png', r, cmap='gray')
+
+
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(
@@ -363,6 +363,7 @@ if __name__ == '__main__':
         z = image_processing(y)[0]
         display_or_save('input.png', y, cmap='gray')
         display_or_save('output.png', z.astype(np.uint8, copy=False), cmap='gray')
+        residuals(y, z)
     else:
         y = rgb2ycc(y)
         y_ycc = y[:, :, 0]
@@ -389,9 +390,7 @@ if __name__ == '__main__':
         display_or_save('input.png', y.astype(np.uint8, copy=False))
         display_or_save('output.png', z.astype(np.uint8, copy=False))
 
-        # Residuals
-        r = np.abs(y_ycc - z_ycc)
-        display_or_save('residuals.png', r, cmap='gray')
+        residuals(y_ycc, z_ycc)
 
     if not save_image:
         plt.show()
