@@ -11,13 +11,13 @@ def spatially_uniform_sample(M, N, num_samples):
     sample_dist = int(np.sqrt((M*N) / num_samples))
 
     xy0 = int(sample_dist / 2)
-    spx = range(xy0, M-xy0, sample_dist)
-    spy = range(xy0, N-xy0, sample_dist)
+    spx = range(xy0, M, sample_dist)
+    spy = range(xy0, N, sample_dist)
     sample_indices = np.empty(len(spx)*len(spy), dtype=np.uint32)
     c = 0
-    for j in spy:
-        for i in spx:
-            sample_indices[c] = i + M*(j-1)
+    for i in spx:
+        for j in spy:
+            sample_indices[c] = N*i + j
             c += 1
         
     logger.info('Spatially uniform sampling (with distance {0}) done in {1}s'.format(sample_dist, time.time() - start))
