@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from utils import rgb2ycc, ycc2rgb
+from utils import rgb2ycc, ycc2rgb, num2xy
 from scipy import misc
 from scipy.linalg import eigh, sqrtm, svd
 from scipy.spatial import distance
@@ -15,6 +15,23 @@ import sys
 from utils import xy2num
 
 logger = logging.getLogger(__name__)
+
+
+def display_sample_pixels(y, sample_indices):
+    M, N = y.shape
+    y_samples = np.empty((M, N, 3), dtype=np.uint8)  # RGB
+    y_samples[:, :, 0] = y
+    y_samples[:, :, 1] = y
+    y_samples[:, :, 2] = y
+    for index in sample_indices:
+        x, y = num2xy(index, M, N)
+        y_samples[x, y] = (255, 0, 0)  # Red
+        y_samples[x-1, y] = (255, 0, 0)
+        y_samples[x+1, y] = (255, 0, 0)
+        y_samples[x, y-1] = (255, 0, 0)
+        y_samples[x, y+1] = (255, 0, 0)
+
+    display_or_save('sample_pixels.png', y_samples)
 
 
 def permutation(phi, sample_indices):
@@ -216,11 +233,10 @@ def smoothing(y, sample_indices, phi, Pi):
         d_i[sample_idx] = sum(k_i)
         sum_D += sum(k_i)
         ident[i, sample_idx] = 1.
-        #W_AB[i, :] = k_i - d_i
+        W_AB[i, :] = k_i - d_i
 
     alpha = 1./(sum_D/sample_size)
     W_AB = ident + (alpha * W_AB)
-    #W_AB[W_AB<0] = 0
     W_A = W_AB[:, sample_indices]
     v = np.asarray(range(num_pixels))
     v = np.delete(v, sample_indices)
@@ -270,9 +286,10 @@ def image_processing(y, cr=None, cb=None, **kwargs):
     sampling_code = kwargs.get('sampling', sampling.SPATIALLY_UNIFORM)
     sampling_function = sampling.methods[sampling_code]
     #sample_size = int(M*N*0.01)
-    sample_size = 200
+    sample_size = 100
     sample_indices = sampling_function(M, N, sample_size)
     logger.info('Number of sample pixels: Theory {0} / Real {1} (or {2:.2f}% of the all pixels)'.format(sample_size, len(sample_indices), (len(sample_indices)*100.)/(M*N)))
+    display_sample_pixels(y, sample_indices)
 
     # Nystroem
     affinity_code = kwargs.get('affinity', affinity_methods.PHOTOMETRIC)
@@ -291,13 +308,20 @@ def image_processing(y, cr=None, cb=None, **kwargs):
     #z = y
 
     # Smoothing
-    z = smoothing(y, sample_indices, phi_perm, Pi)
+    #z = smoothing(y, sample_indices, phi_perm, Pi)
 
     # Sinkhorn
-    #W_A, W_B = Sinkhorn(phi, Pi)
-    #V, L = Orthogonalization(W_A, W_B)
-    #V = permutation(V, sample_indices)
-    #Z = np.dot(V, L * np.dot(V.T, y.reshape(M*N))).reshape(M, N)
+    W_A, W_B = Sinkhorn(phi, Pi)
+    W_A[W_A<0] = 0
+    V, L = Orthogonalization(W_A, W_B)
+    V = permutation(V, sample_indices)
+    plt.figure()
+    plt.plot(range(1, L.shape[0]+1), L)
+    plt.savefig('results/eigenvalues.png')
+    display_or_save('eigvec1.png', V[:, 0].reshape(M, N), cmap='gray')
+    display_or_save('eigvec2.png', V[:, 1].reshape(M, N), cmap='gray')
+    display_or_save('eigvec3.png', V[:, 2].reshape(M, N), cmap='gray')
+    z = np.dot(V, L * np.dot(V.T, y.reshape(M*N))).reshape(M, N)
 
     # Denoising
     #z = denoising(y, phi, Pi)
