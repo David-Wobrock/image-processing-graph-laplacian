@@ -11,8 +11,8 @@ def spatially_uniform_sample(M, N, num_samples):
     sample_dist = int(np.sqrt((M*N) / num_samples))
 
     xy0 = int(sample_dist / 2)
-    spx = range(xy0, M, sample_dist)
-    spy = range(xy0, N, sample_dist)
+    spx = range(xy0, M-1, sample_dist)
+    spy = range(xy0, N-1, sample_dist)
     sample_indices = np.empty(len(spx)*len(spy), dtype=np.uint32)
     c = 0
     for i in spx:

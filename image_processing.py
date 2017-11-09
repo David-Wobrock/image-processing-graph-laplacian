@@ -94,24 +94,6 @@ def Sinkhorn(phi, Pi):
     return W_A, W_AB
 
 
-def Orthogonalization(W_A, W_AB):
-    # Adapted from GLIDE, by Milanfar
-    start = time.time()
-    W_Ah = sqrtm(np.linalg.pinv(W_A))
-    #W_Ah = sqrtm(np.linalg.inv(W_A))
-    #W_Ah = np.linalg.inv(np.sqrt(W_A))
-    Q = W_A + (W_Ah.dot(W_AB).dot(W_AB.T).dot(W_Ah))
-
-    U, L, _ = svd(Q)
-    Lh = np.linalg.pinv(np.sqrt(np.diag(L)))
-    #Lh = np.linalg.inv(np.sqrt(np.diag(L)))
-    V = np.concatenate((W_A, W_AB.T)).dot(W_Ah).dot(U).dot(Lh)
-
-    Lambda = L
-    Lambda[Lambda>1] = 1
-    logger.info('Orthogonalization done in {0}s'.format(time.time() - start))
-    return V, Lambda
-
 def orthogonalisation(A, B):
     start = time.time()
     A_sqrt_inv = np.linalg.inv(np.sqrt(A))
@@ -150,63 +132,6 @@ def compute_and_display_pixel_degree(M, N, phi, Pi):
     logger.info('Displayed degrees of pixels matrix in {0}s'.format(time.time() - start))
 
 
-def adaptive_sharpening(y, cr, cb, phi, Pi, beta, beta_crcb):
-    start = time.time()
-    M, N = y.shape[:2]
-    num_pixels = M * N
-    alpha = 1./num_pixels
-
-    y_vector = y.reshape(num_pixels)
-    cr_vector_init = cr.reshape(num_pixels)
-    cb_vector_init = cb.reshape(num_pixels)
-
-    z_vector = np.empty(num_pixels)
-    cr_vector = np.empty(num_pixels)
-    cb_vector = np.empty(num_pixels)
-    for i in range(num_pixels): # TODO can be parallelised
-        k_i = np.dot((phi[i, :] * Pi), phi.T)
-        d_i = sum(k_i)
-        w_i = 1 - alpha * (d_i - k_i)
-        w_i2 = w_i * w_i
-        w_i3 = w_i2 * w_i
-
-        f_i = (1 + beta)*w_i2 - beta*w_i3
-        z_vector[i] = np.dot(f_i, y_vector)
-
-        f_i_crcb = (1 + beta_crcb)*w_i2 - beta_crcb*w_i3
-        cr_vector[i] = np.dot(f_i_crcb, cr_vector_init)
-        cb_vector[i] = np.dot(f_i_crcb, cb_vector_init)
-
-    z = z_vector.reshape(M, N)
-    cr = cr_vector.reshape(M, N)
-    cb = cb_vector.reshape(M, N)
-    logger.info('Adaptive sharpening done in {0}s'.format(time.time() - start))
-    return z, cr, cb
-
-
-def sharpening_full_matrix(y, cr, cb, phi, Pi, beta, beta_crcb):
-    start = time.time()
-    M, N = y.shape[:2]
-    alpha = 1./ (M*N)
-
-    k = np.dot((phi * Pi), phi.T)
-    d = np.diag(np.sum(k, axis=0))
-    i = np.identity(k.shape[0])
-
-    W = i - alpha*(d-k)
-    W2 = W ** 2
-    W3 = W2 * W
-
-    F = (1+beta)*W2 - beta*W3
-    #F_crcb = (1+beta_crcb)*W2 - beta_crcb*W3
-
-    z = np.dot(F, y.reshape(M*N)).reshape(M, N)
-    #cr = np.dot(F_crcb, cr.reshape(M*N)).reshape(M, N)
-    #cb = np.dot(F_crcb, cb.reshape(M*N)).reshape(M, N)
-    logger.info('Sharpening full matrix done in {0}s'.format(time.time() - start))
-    return z, cr, cb
-
-
 def smoothing(y, sample_indices, phi, Pi):
     start = time.time()
     M, N = y.shape[:2]
@@ -215,13 +140,13 @@ def smoothing(y, sample_indices, phi, Pi):
 
     y_vector = y.reshape(num_pixels)
     z_vector = np.empty(num_pixels)
-
+    # Compute filter and image with full matrix (very expensive)
     #K = phi.dot(np.diag(Pi)).dot(phi.T)
     #D = np.diag(np.sum(K, axis=0))
     #alpha = 1./np.mean(np.diag(D))
     #W = np.identity(num_pixels) + alpha * (K - D)
-    #z_vector2 = W.dot(y_vector)
-    #return z_vector2.reshape(M, N)
+    #z_vector = W.dot(y_vector)
+    #return z_vector.reshape(M, N)
 
     W_AB = np.empty((sample_size, num_pixels))
     ident = np.zeros((sample_size, num_pixels))
@@ -245,12 +170,14 @@ def smoothing(y, sample_indices, phi, Pi):
     phi, Pi = orthogonalisation(W_A, W_B)
     phi = permutation(phi, sample_indices)
 
+    # Display eigenvalues and eigenvectors
     plt.figure()
     plt.plot(range(1, Pi.shape[0]+1), Pi)
     plt.savefig('results/eigenvalues.png')
     display_or_save('eigvec1.png', phi[:, 0].reshape(M, N), cmap='gray')
     display_or_save('eigvec2.png', phi[:, 1].reshape(M, N), cmap='gray')
     display_or_save('eigvec3.png', phi[:, 2].reshape(M, N), cmap='gray')
+
     z_vector = np.dot(
         phi,
         ((Pi.T) * np.dot(phi.T, y_vector)))
@@ -259,22 +186,29 @@ def smoothing(y, sample_indices, phi, Pi):
     logger.info('Smoothing done in {0}s'.format(time.time() - start))
     return z
 
-
-def denoising(y, phi, Pi):
+def sinkhorn_smoothing(y, sample_indices, phi, Pi):
     start = time.time()
     M, N = y.shape[:2]
     num_pixels = M*N
-    alpha = 1./num_pixels
+
     y_vector = y.reshape(num_pixels)
     z_vector = np.empty(num_pixels)
 
-    k = np.dot((phi * Pi), phi.T)
-    d = np.diag(np.sum(k, axis=0))
+    W_A, W_B = Sinkhorn(phi, Pi)
+    W_A[W_A<0] = 0
+    V, L = orthogonalisation(W_A, W_B)
+    V = permutation(V, sample_indices)
 
-    z_vector = np.dot(alpha*(d-k), y_vector)
+    plt.figure()
+    plt.plot(range(1, L.shape[0]+1), L)
+    plt.savefig('results/eigenvalues.png')
+    display_or_save('eigvec1.png', V[:, 0].reshape(M, N), cmap='gray')
+    display_or_save('eigvec2.png', V[:, 1].reshape(M, N), cmap='gray')
+    display_or_save('eigvec3.png', V[:, 2].reshape(M, N), cmap='gray')
 
+    z_vector = np.dot(V, L * np.dot(V.T, y_vector))
     z = z_vector.reshape(M, N)
-    logger.info('Denoising full matrix done in {0}s'.format(time.time() - start))
+    logger.info('Sinkhorn smoothing done in {0}s'.format(time.time() - start))
     return z
 
 
@@ -292,7 +226,7 @@ def image_processing(y, cr=None, cb=None, **kwargs):
     display_sample_pixels(y, sample_indices)
 
     # Nystroem
-    affinity_code = kwargs.get('affinity', affinity_methods.PHOTOMETRIC)
+    affinity_code = kwargs.get('affinity', affinity_methods.BILATERAL)
     affinity_function = affinity_methods.methods[affinity_code]
     phi, Pi = nystroem(y, sample_indices, affinity_function)
     
@@ -305,34 +239,12 @@ def image_processing(y, cr=None, cb=None, **kwargs):
     #compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 92, 357)
 
     #compute_and_display_pixel_degree(M, N, phi, Pi)
-    #z = y
 
     # Smoothing
     #z = smoothing(y, sample_indices, phi_perm, Pi)
 
-    # Sinkhorn
-    W_A, W_B = Sinkhorn(phi, Pi)
-    W_A[W_A<0] = 0
-    V, L = Orthogonalization(W_A, W_B)
-    V = permutation(V, sample_indices)
-    plt.figure()
-    plt.plot(range(1, L.shape[0]+1), L)
-    plt.savefig('results/eigenvalues.png')
-    display_or_save('eigvec1.png', V[:, 0].reshape(M, N), cmap='gray')
-    display_or_save('eigvec2.png', V[:, 1].reshape(M, N), cmap='gray')
-    display_or_save('eigvec3.png', V[:, 2].reshape(M, N), cmap='gray')
-    z = np.dot(V, L * np.dot(V.T, y.reshape(M*N))).reshape(M, N)
-
-    # Denoising
-    #z = denoising(y, phi, Pi)
-
-    # Sharpening full matrix
-    beta = 1.6
-    beta_crcb = 0.6
-    #z, cr, cb = sharpening_full_matrix(y, cr, cb, phi_perm, Pi, beta, beta_crcb)
-
-    # Sharpening
-    #z, cr, cb = adaptive_sharpening(y, cr, cb, phi, Pi, beta, beta_crcb)
+    # Sinkhorn smoothing
+    z = sinkhorn_smoothing(y, sample_indices, phi, Pi)
 
     logger.info('Program done in {0}s'.format(time.time() - start))
     return z, cr, cb
@@ -381,7 +293,6 @@ if __name__ == '__main__':
     set_up_logging()
 
     y = misc.imread(img_name)
-    #y = y[:, :, 0]
     logger.info("Image '{0}' has shape {1} => {2} pixels".format(img_name, y.shape, y.shape[0]*y.shape[1]))
     if len(y.shape) == 2:  # Detect gray scale
         z = image_processing(y)[0]
