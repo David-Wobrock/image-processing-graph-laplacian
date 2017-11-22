@@ -23,13 +23,12 @@ def display_sample_pixels(y, sample_indices):
     y_samples[:, :, 0] = y
     y_samples[:, :, 1] = y
     y_samples[:, :, 2] = y
+    red_pixel = (255, 0, 0)
     for index in sample_indices:
         x, y = num2xy(index, M, N)
-        y_samples[x, y] = (255, 0, 0)  # Red
-        y_samples[x-1, y] = (255, 0, 0)
-        y_samples[x+1, y] = (255, 0, 0)
-        y_samples[x, y-1] = (255, 0, 0)
-        y_samples[x, y+1] = (255, 0, 0)
+        for i in range(-5, 6):
+            for j in range(-5, 6):
+                y_samples[x+i, y+j] = red_pixel
 
     display_or_save('sample_pixels.png', y_samples)
 
@@ -56,47 +55,54 @@ def nystroem(y, sample_indices, affinity_function):
     start = time.time()
     M, N = y.shape[:2]
 
-    K_AB = affinity_function(y, sample_indices)
+    K_AB = affinity_function(y, sample_indices)  # Can be parallelised
 
+    start_split = time.time()
     K_A = K_AB[:, sample_indices]
     v = np.asarray(range(M*N))
     v = np.delete(v, sample_indices)
     K_B = K_AB[:, v]
+    logger.info('Split K_AB into K_A and K_B in {0}s'.format(time.time() - start_split))
 
+    start_svd = time.time()
     phi_A, Pi, _ = svd(K_A)
+    logger.info('SVD size {0} took {1}s'.format(K_A.shape, time.time() - start_svd))
+
+    start_phi_approx = time.time()
     phi = np.concatenate((
         phi_A,
         np.dot(
             K_B.T,
-            np.dot(
-                phi_A,
-                np.linalg.inv(np.diag(Pi))))))
+            phi_A * (1./Pi))))
+    logger.info('Compute approx phi of K took {0}s'.format(time.time() - start_phi_approx))
 
     logger.info('Nystrom done in {0}s'.format(time.time() - start))
     return phi, Pi
 
 
-def Sinkhorn(phi, Pi):
+def sinkhorn(phi, Pi):
     # Adapted from GLIDE, by Milanfar
     start = time.time()
     M, N = phi.shape[:2]
     r = np.ones(M)
     for i in range(100):
-        c = 1./(np.dot(phi, (Pi * (np.dot(phi.T, r).T)).T))
-        r = 1./(np.dot(phi, (Pi * (np.dot(phi.T, c).T)).T))
-    v = np.repeat(c, N).reshape(M, N) * phi
-    ABw = np.empty([N, M])
+        c = 1. / phi.dot(Pi * phi.T.dot(r))
+        c = np.nan_to_num(c)
+        r = 1. / phi.dot(Pi * phi.T.dot(c))
+        r = np.nan_to_num(r)
+    phi_c = phi * np.repeat(c, N).reshape(M, N)
+    W_AB = np.empty([N, M])
     for i in range(N):  # Can be parallelised
-        ABw[i, :] = np.dot((r[i] * (Pi.T * phi[i, :])), v.T)
-    W_A = ABw[:, :N]
-    W_AB = ABw[:, N:M]
+        W_AB[i, :] = (r[i]*phi[i, :]*Pi).dot(phi_c.T)
+    W_A = W_AB[:, :N]
+    W_B = W_AB[:, N:M]
     logger.info('Sinkhorn done in {0}s'.format(time.time() - start))
-    return W_A, W_AB
+    return W_A, W_B
 
 
 def orthogonalisation(A, B):
     start = time.time()
-    A_sqrt_inv = np.linalg.inv(np.sqrt(A))
+    A_sqrt_inv = np.linalg.inv(sqrtm(A))
 
     Q = A + A_sqrt_inv.dot(B).dot(B.T).dot(A_sqrt_inv)
     phi_Q, Pi_Q, _ = svd(Q)
@@ -132,72 +138,27 @@ def compute_and_display_pixel_degree(M, N, phi, Pi):
     logger.info('Displayed degrees of pixels matrix in {0}s'.format(time.time() - start))
 
 
+def smoothing_matrix(sample_indices, phi, Pi):
+    start = time.time()
+
+    W_A, W_B = sinkhorn(phi, Pi)
+    W_A[W_A<0] = 0
+    V, L = orthogonalisation(W_A, W_B)
+    V = permutation(V, sample_indices)
+
+    logger.info('Returned smoothing matrix in {0}s'.format(time.time() - start))
+    return V, L
+
+
 def smoothing(y, sample_indices, phi, Pi):
     start = time.time()
     M, N = y.shape[:2]
     num_pixels = M*N
-    sample_size = len(sample_indices)
-
-    y_vector = y.reshape(num_pixels)
-    z_vector = np.empty(num_pixels)
-    # Compute filter and image with full matrix (very expensive)
-    #K = phi.dot(np.diag(Pi)).dot(phi.T)
-    #D = np.diag(np.sum(K, axis=0))
-    #alpha = 1./np.mean(np.diag(D))
-    #W = np.identity(num_pixels) + alpha * (K - D)
-    #z_vector = W.dot(y_vector)
-    #return z_vector.reshape(M, N)
-
-    W_AB = np.empty((sample_size, num_pixels))
-    ident = np.zeros((sample_size, num_pixels))
-    sum_D = 0
-    # *** Fill W_AB
-    for i, sample_idx in enumerate(sample_indices):
-        k_i = np.dot((phi[sample_idx, :] * Pi), phi.T)
-        d_i = np.zeros(num_pixels)
-        d_i[sample_idx] = sum(k_i)
-        sum_D += sum(k_i)
-        ident[i, sample_idx] = 1.
-        W_AB[i, :] = k_i - d_i
-
-    alpha = 1./(sum_D/sample_size)
-    W_AB = ident + (alpha * W_AB)
-    W_A = W_AB[:, sample_indices]
-    v = np.asarray(range(num_pixels))
-    v = np.delete(v, sample_indices)
-    W_B = W_AB[:, v]
-
-    phi, Pi = orthogonalisation(W_A, W_B)
-    phi = permutation(phi, sample_indices)
-
-    # Display eigenvalues and eigenvectors
-    plt.figure()
-    plt.plot(range(1, Pi.shape[0]+1), Pi)
-    plt.savefig('results/eigenvalues.png')
-    display_or_save('eigvec1.png', phi[:, 0].reshape(M, N), cmap='gray')
-    display_or_save('eigvec2.png', phi[:, 1].reshape(M, N), cmap='gray')
-    display_or_save('eigvec3.png', phi[:, 2].reshape(M, N), cmap='gray')
-
-    z_vector = np.dot(
-        phi,
-        ((Pi.T) * np.dot(phi.T, y_vector)))
-
-    z = z_vector.reshape(M, N)
-    logger.info('Smoothing done in {0}s'.format(time.time() - start))
-    return z
-
-def sinkhorn_smoothing(y, sample_indices, phi, Pi):
-    start = time.time()
-    M, N = y.shape[:2]
-    num_pixels = M*N
 
     y_vector = y.reshape(num_pixels)
     z_vector = np.empty(num_pixels)
 
-    W_A, W_B = Sinkhorn(phi, Pi)
-    W_A[W_A<0] = 0
-    V, L = orthogonalisation(W_A, W_B)
-    V = permutation(V, sample_indices)
+    V, L = smoothing_matrix(sample_indices, phi, Pi)
 
     plt.figure()
     plt.plot(range(1, L.shape[0]+1), L)
@@ -208,7 +169,29 @@ def sinkhorn_smoothing(y, sample_indices, phi, Pi):
 
     z_vector = np.dot(V, L * np.dot(V.T, y_vector))
     z = z_vector.reshape(M, N)
-    logger.info('Sinkhorn smoothing done in {0}s'.format(time.time() - start))
+    logger.info('Smoothing done in {0}s'.format(time.time() - start))
+    return z
+
+
+def sharpening(y, sample_indices, phi, Pi):
+    start = time.time()
+    M, N = y.shape[:2]
+    num_pixels = M*N
+
+    y_vector = y.reshape(num_pixels)
+    z_vector = np.empty(num_pixels)
+
+    beta = 1.5
+    phi, Pi = smoothing_matrix(sample_indices, phi, Pi)
+
+    start_sharpening_filter = time.time()
+    w_square_y = phi.dot(Pi * phi.T.dot(phi.dot(Pi * phi.T.dot(y_vector))))
+    w_cube_y = phi.dot(Pi * phi.T.dot(w_square_y))
+    z_vector = (1+beta)*w_square_y - beta*w_cube_y
+    logger.info('Sharpening filter computation in {0}s'.format(time.time() - start_sharpening_filter))
+    z = z_vector.reshape(M, N)
+
+    logger.info('Sharpening done in {0}s'.format(time.time() - start))
     return z
 
 
@@ -220,13 +203,13 @@ def image_processing(y, cr=None, cb=None, **kwargs):
     sampling_code = kwargs.get('sampling', sampling.SPATIALLY_UNIFORM)
     sampling_function = sampling.methods[sampling_code]
     #sample_size = int(M*N*0.01)
-    sample_size = 100
+    sample_size = 20
     sample_indices = sampling_function(M, N, sample_size)
     logger.info('Number of sample pixels: Theory {0} / Real {1} (or {2:.2f}% of the all pixels)'.format(sample_size, len(sample_indices), (len(sample_indices)*100.)/(M*N)))
-    display_sample_pixels(y, sample_indices)
+    #display_sample_pixels(y, sample_indices)
 
     # Nystroem
-    affinity_code = kwargs.get('affinity', affinity_methods.BILATERAL)
+    affinity_code = kwargs.get('affinity', affinity_methods.PHOTOMETRIC)
     affinity_function = affinity_methods.methods[affinity_code]
     phi, Pi = nystroem(y, sample_indices, affinity_function)
     
@@ -235,16 +218,19 @@ def image_processing(y, cr=None, cb=None, **kwargs):
     compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 65, 65)
     #compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 165, 65)
     #compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 80, 120)
-    #compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 430, 55)
-    #compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 92, 357)
+    #compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 2373, 3441)
+    #compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 2169, 3729)
+    #compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 1185, 2270)
+    #compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 2632, 188)
+    #compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 1085, 2270)
 
     #compute_and_display_pixel_degree(M, N, phi, Pi)
 
     # Smoothing
-    #z = smoothing(y, sample_indices, phi_perm, Pi)
+    z = smoothing(y, sample_indices, phi, Pi)
 
-    # Sinkhorn smoothing
-    z = sinkhorn_smoothing(y, sample_indices, phi, Pi)
+    # Sharpening
+    #z = sharpening(y, sample_indices, phi, Pi)
 
     logger.info('Program done in {0}s'.format(time.time() - start))
     return z, cr, cb
