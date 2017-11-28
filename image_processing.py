@@ -102,7 +102,10 @@ def sinkhorn(phi, Pi):
 
 def orthogonalisation(A, B):
     start = time.time()
-    A_sqrt_inv = np.linalg.inv(sqrtm(A))
+
+    phi, Pi, _ = svd(A)
+    Pi_sqrt_inv = 1./np.sqrt(Pi)
+    A_sqrt_inv = (phi*Pi_sqrt_inv).dot(phi.T)
 
     Q = A + A_sqrt_inv.dot(B).dot(B.T).dot(A_sqrt_inv)
     phi_Q, Pi_Q, _ = svd(Q)
