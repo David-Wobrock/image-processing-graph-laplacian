@@ -19,7 +19,7 @@ Initialize Slepc/Petsc/MPI
 Input: argc, argv, the parameters of main()
 Output: rank and size
 */
-PetscErrorCode InitProgram(int argc, char** argv, int* const rank, int* const size) 
+static PetscErrorCode InitProgram(int argc, char** argv, int* const rank, int* const size) 
 {
     PetscErrorCode ierr = 0;
 
@@ -33,7 +33,7 @@ PetscErrorCode InitProgram(int argc, char** argv, int* const rank, int* const si
 Input: an allocate space for filename
 Output: filled filename
 */
-PetscErrorCode GetFilePath(char* const filename)
+static PetscErrorCode GetFilePath(char* const filename)
 {
     PetscErrorCode ierr = 0;
     PetscBool found_filename;
@@ -51,7 +51,7 @@ Read image and broadcast it to everyone
 Input: rank, filename, *not* allocated img_bytes
 Output: allocated and filled img_bytes, filled image width and height
 */
-void ReadAndBcastImage(const int rank, const char* const filename, png_bytep** const img_bytes, int* const width, int* const height)
+static void ReadAndBcastImage(const int rank, const char* const filename, png_bytep** const img_bytes, int* const width, int* const height)
 {
     int width_height[2];
     if (rank == 0)
@@ -89,7 +89,7 @@ Get indices of the sampled pixels (from 0 to width*height)
 Input: image width and height, the number of requested samples (as pointer because it will be modified), a *not* allocated pointer for the indices
 Output: the exact number of samples (sample_size) and a filled and allocated array with the indices (sample_indices)
 */
-void Sampling(const int width, const int height, unsigned int* const sample_size, unsigned int** const sample_indices)
+static void Sampling(const int width, const int height, unsigned int* const sample_size, unsigned int** const sample_indices)
 {
     const unsigned int sample_dist = (unsigned int) (sqrt((width*height) / (*sample_size)));
     const unsigned int xy0 = (unsigned int) (sample_dist/2);
@@ -107,7 +107,7 @@ void Sampling(const int width, const int height, unsigned int* const sample_size
 /*
 Photometric distance
 */
-void ComputeDistance(Vec v, const double sample_value)
+static void ComputeDistance(Vec v, const double sample_value)
 {
     PetscScalar h = 10.;
 
@@ -124,7 +124,7 @@ Compute the affinity matrices K_A and K_B
 Input: Created variables K_A and K_B, images and its size, the number of samples and the samples indices
 Output: created and setup K_A and K_B matrices
 */
-void ComputeAffinityMatrices(Mat* K_A, Mat* K_B, const png_bytep* const img_bytes, const int width, const int height, const unsigned int sample_size, const unsigned int* sample_indices)
+static void ComputeAffinityMatrices(Mat* K_A, Mat* K_B, const png_bytep* const img_bytes, const int width, const int height, const unsigned int sample_size, const unsigned int* sample_indices)
 {
     int num_pixels = width * height;
     PetscInt istart, iend;
@@ -216,12 +216,75 @@ void ComputeAffinityMatrices(Mat* K_A, Mat* K_B, const png_bytep* const img_byte
     MatAssemblyEnd(*K_B, MAT_FINAL_ASSEMBLY);
 }
 
+/*
+Projection operator: proj_u(v) = (<u, v> / <u, u>) * u
+<u, v> = u^T*v (dot product)
+Input: v, u vectors, res should have been created
+Output: an allocated and filled res
+*/
+static void Projection(const Vec v, const Vec u, Vec* res)
+{
+    PetscScalar val1, val2, factor;
+    VecDot(v, u, &val1);
+    VecDot(u, u, &val2);
+    factor = val1 / val2;
+
+    VecCopy(u, *res);
+    VecScale(*res, factor);
+}
+
+/*
+Generates a orthonormal basis of size p (# of cols)
+Generates random matrix + Gram-Schimdt
+Input: X is already created and initialised, p the number of cols of X, n number of rows of X
+Output: filled X
+*/
+static void GenerateOrthonormalBasis(Mat* X, const unsigned int n, const unsigned int p)
+{
+    Vec* vecs;
+    Vec sum_vec, proj_vec;
+    PetscRandom rand_ctx;
+    PetscRandomCreate(PETSC_COMM_SELF, &rand_ctx);
+    PetscScalar* values = (PetscScalar*) malloc(sizeof(PetscScalar) * n);
+    PetscInt* indices = (PetscInt*) malloc(sizeof(PetscInt) * n);
+    for (unsigned int i = 0; i < n; ++i)
+    {
+        indices[i] = i;
+    }
+
+    VecCreateSeq(PETSC_COMM_SELF, n, &sum_vec);
+    VecDuplicate(sum_vec, &proj_vec);
+    VecDuplicateVecs(sum_vec, p, &vecs);
+
+    for (unsigned int k = 0; k < p; ++k)
+    {
+        VecZeroEntries(sum_vec);
+        VecSetRandom(vecs[k], rand_ctx);
+        for (unsigned int j = 0; j < k; ++j)
+        {
+            Projection(vecs[k], vecs[j], &proj_vec);
+            VecAXPY(sum_vec, 1., proj_vec);
+        }
+        VecAXPBY(vecs[k], -1., 1, sum_vec);  // u_k = 1*v_k - sum
+        VecNormalize(vecs[k], NULL);
+
+        VecGetValues(vecs[k], n, indices, values);
+        MatSetValues(*X, n, indices, 1, (int*)&k, values, INSERT_VALUES);
+    }
+
+    VecDestroyVecs(p, &vecs);
+    VecDestroy(&proj_vec);
+    VecDestroy(&sum_vec);
+    free(indices);
+    free(values);
+    PetscRandomDestroy(&rand_ctx);
+}
+
 int main(int argc, char** argv)
 {
     char filename[PETSC_MAX_PATH_LEN];
     PetscMPIInt rank, size;
     Mat K_A, K_B;
-    //Mat X_k, X_k1;
 
     InitProgram(argc, argv, &rank, &size);
     double start_time = MPI_Wtime();
@@ -230,7 +293,7 @@ int main(int argc, char** argv)
     int width, height;
     png_bytep* img_bytes;
     ReadAndBcastImage(rank, filename, &img_bytes, &width, &height);
-    printf("I am %d of %d and width=%d, height=%d and first val=%d\n", rank, size, width, height, img_bytes[0][0]);
+    //printf("I am %d of %d and width=%d, height=%d and first val=%d\n", rank, size, width, height, img_bytes[0][0]);
 
     // Sampling (all compute the same locally)
     unsigned int sample_size = width*height*0.01; // 1%
@@ -241,10 +304,40 @@ int main(int argc, char** argv)
     // Compute affinity matrix
     ComputeAffinityMatrices(&K_A, &K_B, img_bytes, width, height, sample_size, sample_indices);
 
+    // Solve eigenvalue problem
+    const unsigned int p = 5; // num eigenpairs
+    Mat X_k;
+    MatCreate(PETSC_COMM_WORLD, &X_k);
+    MatSetSizes(X_k, PETSC_DECIDE, PETSC_DECIDE, sample_size, p);
+    MatSetType(X_k, MATDENSE);
+    MatSetFromOptions(X_k);
+    MatSetUp(X_k);
+
+    if (rank == 0)
+    {
+        GenerateOrthonormalBasis(&X_k, sample_size, p);
+    }
+    MatAssemblyBegin(X_k, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(X_k, MAT_FINAL_ASSEMBLY);
+
+    // Test if X_k, k=0 is orthonormal
+    Mat res;
+    MatTransposeMatMult(X_k, X_k, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &res);
+    MatView(res, PETSC_VIEWER_STDOUT_WORLD); // Should be identity
+    MatDestroy(&res);
+
+    PetscReal* norms = (PetscReal*) malloc(sizeof(PetscReal) * p);
+    MatGetColumnNorms(X_k, NORM_2, norms);
+    for (unsigned int i = 0; i < p; ++i)
+    {
+        PetscPrintf(PETSC_COMM_WORLD, "Vec %d: %f\n", i, norms[i]);
+    }
+
     // End
     PetscPrintf(PETSC_COMM_WORLD, "Total computation time: %fs\n", MPI_Wtime() - start_time);
 
     // Clean up
+    MatDestroy(&X_k);
     MatDestroy(&K_A);
     MatDestroy(&K_B);
     free(sample_indices);
