@@ -7,16 +7,35 @@ SLEPC_CONFIGDIR=${SLEPC_DIR}/lib/slepc
 
 all: image_processing
 
-include ${PETSC_CONFIGDIR}/conf/variables
-include ${PETSC_CONFIGDIR}/conf/rules
+#include ${PETSC_CONFIGDIR}/conf/variables
+#include ${PETSC_CONFIGDIR}/conf/rules
 include ${SLEPC_CONFIGDIR}/conf/slepc_variables
 include ${SLEPC_CONFIGDIR}/conf/slepc_rules
 
-COMPILER=mpicc
-PETSC_INCLUDES=-I${PETSC_DIR}/include/ -I${PETSC_DIR}/${PETSC_ARCH}/include/
-PETSC_LINKS=-L${PETSC_DIR}/${PETSC_ARCH}/lib/ 
-SLEPC_INCLUDES=-I${SLEPC_DIR}/include/ -I${SLEPC_DIR}/${PETSC_ARCH}/include/
-SLEPC_LINKS=-L${SLEPC_DIR}/${PETSC_ARCH}/lib/ 
+COMPILER=@mpicc
+COMP_FLAGS=-Wall
+LINKER=@mpicc
+LINK_FLAGS=-Wall
+ECHO=@echo
+SRCS=${wildcard *.c}
+OBJS=${SRCS:.c=.o}
 
-image_processing: image_processing.c read_img.c utils.c inverse_power_it.c gram_schmidt.c
-	${COMPILER} image_processing.c read_img.c utils.c inverse_power_it.c gram_schmidt.c -Wall ${PETSC_INCLUDES} ${SLEPC_INCLUDES} ${PETSC_LINKS} ${SLEPC_LINKS} -o image_processing ${PETSC_LIB} ${SLEPC_LIB} -lpng -lm
+PETSC_INCLUDES=-I${PETSC_DIR}/include/ -I${PETSC_DIR}/${PETSC_ARCH}/include/
+SLEPC_INCLUDES=-I${SLEPC_DIR}/include/ -I${SLEPC_DIR}/${PETSC_ARCH}/include/
+ALL_INCLUDES=${PETSC_INCLUDES} ${SLEPC_INCLUDES}
+
+PETSC_LINKS=-L${PETSC_DIR}/${PETSC_ARCH}/lib/
+SLEPC_LINKS=-L${SLEPC_DIR}/${PETSC_ARCH}/lib/
+ALL_LINKS=${PETSC_LINKS} ${SLEPC_LINKS}
+
+CUSTOM_LIBS=-lpng -lm
+ALL_LIBS=${PETSC_LIB} ${SLEPC_LIB} ${CUSTOM_LIBS}
+
+# ** Targets **
+image_processing: ${OBJS}
+	${ECHO} "Linking $@"
+	${LINKER} -o $@ ${LINK_FLAGS} ${OBJS} ${ALL_LINKS} ${ALL_LIBS}
+
+%.o: %.c
+	${ECHO} "Compiling $@"
+	${COMPILER} -c ${COMP_FLAGS} ${@:.o=.c} -o $@ ${ALL_INCLUDES}
