@@ -13,6 +13,7 @@
 
 #include "read_img.h"
 #include "utils.h"
+#include "inverse_power_it.h"
 
 /*
 Initialize Slepc/Petsc/MPI
@@ -133,9 +134,10 @@ static void ComputeAffinityMatrices(Mat* K_A, Mat* K_B, const png_bytep* const i
     Vec v, v_orig;
 
     // K_A
+    //MatCreateDense(PETSC_COMM_WORLD, PETSC_DECIDE, PETSC_DECIDE, sample_size, sample_size, NULL, K_A);
     MatCreate(PETSC_COMM_WORLD, K_A);
     MatSetSizes(*K_A, PETSC_DECIDE, PETSC_DECIDE, sample_size, sample_size);
-    MatSetType(*K_A, MATDENSE);
+    MatSetType(*K_A, MATMPIDENSE);
     MatSetFromOptions(*K_A);
     MatSetUp(*K_A);
 
@@ -163,7 +165,7 @@ static void ComputeAffinityMatrices(Mat* K_A, Mat* K_B, const png_bytep* const i
         ComputeDistance(v, sample_value);
 
         VecGetValues(v, sample_size, col_indices, values);
-        MatSetValues(*K_A, 1, (int*)&i, sample_size, col_indices, values, INSERT_VALUES);
+        MatSetValues(*K_A, 1, (int*)&i, sample_size, col_indices, values, ADD_VALUES);
     }
     VecDestroy(&v_orig);
     VecDestroy(&v);
@@ -172,9 +174,10 @@ static void ComputeAffinityMatrices(Mat* K_A, Mat* K_B, const png_bytep* const i
 
     // K_B
     unsigned int remaining_pixels_size = num_pixels - sample_size;
+    //MatCreateDense(PETSC_COMM_WORLD, PETSC_DECIDE, PETSC_DECIDE, sample_size, remaining_pixels_size, NULL, K_B);
     MatCreate(PETSC_COMM_WORLD, K_B);
     MatSetSizes(*K_B, PETSC_DECIDE, PETSC_DECIDE, sample_size, remaining_pixels_size);
-    MatSetType(*K_B, MATDENSE);
+    MatSetType(*K_B, MATMPIDENSE);
     MatSetFromOptions(*K_B);
     MatSetUp(*K_B);
 
@@ -203,7 +206,7 @@ static void ComputeAffinityMatrices(Mat* K_A, Mat* K_B, const png_bytep* const i
         ComputeDistance(v, sample_value);
 
         VecGetValues(v, sample_size, col_indices, values);
-        MatSetValues(*K_B, 1, (int*)&i, remaining_pixels_size, col_indices, values, INSERT_VALUES);
+        MatSetValues(*K_B, 1, (int*)&i, remaining_pixels_size, col_indices, values, ADD_VALUES);
     }
     VecDestroy(&v_orig);
     VecDestroy(&v);
@@ -214,70 +217,6 @@ static void ComputeAffinityMatrices(Mat* K_A, Mat* K_B, const png_bytep* const i
     MatAssemblyBegin(*K_B, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(*K_A, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(*K_B, MAT_FINAL_ASSEMBLY);
-}
-
-/*
-Projection operator: proj_u(v) = (<u, v> / <u, u>) * u
-<u, v> = u^T*v (dot product)
-Input: v, u vectors, res should have been created
-Output: an allocated and filled res
-*/
-static void Projection(const Vec v, const Vec u, Vec* res)
-{
-    PetscScalar val1, val2, factor;
-    VecDot(v, u, &val1);
-    VecDot(u, u, &val2);
-    factor = val1 / val2;
-
-    VecCopy(u, *res);
-    VecScale(*res, factor);
-}
-
-/*
-Generates a orthonormal basis of size p (# of cols)
-Generates random matrix + Gram-Schimdt
-Input: X is already created and initialised, p the number of cols of X, n number of rows of X
-Output: filled X
-*/
-static void GenerateOrthonormalBasis(Mat* X, const unsigned int n, const unsigned int p)
-{
-    Vec* vecs;
-    Vec sum_vec, proj_vec;
-    PetscRandom rand_ctx;
-    PetscRandomCreate(PETSC_COMM_SELF, &rand_ctx);
-    PetscScalar* values = (PetscScalar*) malloc(sizeof(PetscScalar) * n);
-    PetscInt* indices = (PetscInt*) malloc(sizeof(PetscInt) * n);
-    for (unsigned int i = 0; i < n; ++i)
-    {
-        indices[i] = i;
-    }
-
-    VecCreateSeq(PETSC_COMM_SELF, n, &sum_vec);
-    VecDuplicate(sum_vec, &proj_vec);
-    VecDuplicateVecs(sum_vec, p, &vecs);
-
-    for (unsigned int k = 0; k < p; ++k)
-    {
-        VecZeroEntries(sum_vec);
-        VecSetRandom(vecs[k], rand_ctx);
-        for (unsigned int j = 0; j < k; ++j)
-        {
-            Projection(vecs[k], vecs[j], &proj_vec);
-            VecAXPY(sum_vec, 1., proj_vec);
-        }
-        VecAXPBY(vecs[k], -1., 1, sum_vec);  // u_k = 1*v_k - sum
-        VecNormalize(vecs[k], NULL);
-
-        VecGetValues(vecs[k], n, indices, values);
-        MatSetValues(*X, n, indices, 1, (int*)&k, values, INSERT_VALUES);
-    }
-
-    VecDestroyVecs(p, &vecs);
-    VecDestroy(&proj_vec);
-    VecDestroy(&sum_vec);
-    free(indices);
-    free(values);
-    PetscRandomDestroy(&rand_ctx);
 }
 
 int main(int argc, char** argv)
@@ -302,42 +241,44 @@ int main(int argc, char** argv)
     PetscPrintf(PETSC_COMM_WORLD, "Sample size: %d\n", sample_size);
 
     // Compute affinity matrix
+    double start_affinity = MPI_Wtime();
     ComputeAffinityMatrices(&K_A, &K_B, img_bytes, width, height, sample_size, sample_indices);
+    PetscPrintf(PETSC_COMM_WORLD, "Affinity matrices computation time: %fs\n", MPI_Wtime() - start_affinity);
 
     // Solve eigenvalue problem
-    const unsigned int p = 5; // num eigenpairs
-    Mat X_k;
-    MatCreate(PETSC_COMM_WORLD, &X_k);
-    MatSetSizes(X_k, PETSC_DECIDE, PETSC_DECIDE, sample_size, p);
-    MatSetType(X_k, MATDENSE);
-    MatSetFromOptions(X_k);
-    MatSetUp(X_k);
-
-    if (rank == 0)
-    {
-        GenerateOrthonormalBasis(&X_k, sample_size, p);
-    }
-    MatAssemblyBegin(X_k, MAT_FINAL_ASSEMBLY);
-    MatAssemblyEnd(X_k, MAT_FINAL_ASSEMBLY);
-
-    // Test if X_k, k=0 is orthonormal
-    Mat res;
-    MatTransposeMatMult(X_k, X_k, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &res);
-    MatView(res, PETSC_VIEWER_STDOUT_WORLD); // Should be identity
-    MatDestroy(&res);
-
-    PetscReal* norms = (PetscReal*) malloc(sizeof(PetscReal) * p);
-    MatGetColumnNorms(X_k, NORM_2, norms);
+    const unsigned int p = sample_size-1; // num eigenpairs
+    PetscReal* eigenvalues = InversePowerIteration(K_A, sample_size, p);
     for (unsigned int i = 0; i < p; ++i)
     {
-        PetscPrintf(PETSC_COMM_WORLD, "Vec %d: %f\n", i, norms[i]);
+        PetscPrintf(PETSC_COMM_WORLD, "%f /", eigenvalues[i]);
     }
+    PetscPrintf(PETSC_COMM_WORLD, "\n");
+    free(eigenvalues);
+
+    // SLEPc eigenvalues
+    EPS eps;
+    EPSCreate(PETSC_COMM_WORLD, &eps);
+    EPSSetOperators(eps, K_A, NULL);
+    EPSSetProblemType(eps, EPS_HEP);
+    //EPSSetWhichEigenpairs(eps, EPS_SMALLEST_MAGNITUDE);
+    EPSSetDimensions(eps, p, PETSC_DEFAULT, PETSC_DEFAULT);
+    EPSSetFromOptions(eps);
+
+    double start_solve = MPI_Wtime();
+    EPSSolve(eps);
+    PetscPrintf(PETSC_COMM_WORLD, "Solve time for SLEPc EPS: %fs\n", MPI_Wtime() - start_solve);
+
+    EPSValuesView(eps, PETSC_VIEWER_STDOUT_WORLD);
+
+    EPSDestroy(&eps);
+
+    // Nyström
+    // TODO
 
     // End
     PetscPrintf(PETSC_COMM_WORLD, "Total computation time: %fs\n", MPI_Wtime() - start_time);
 
     // Clean up
-    MatDestroy(&X_k);
     MatDestroy(&K_A);
     MatDestroy(&K_B);
     free(sample_indices);

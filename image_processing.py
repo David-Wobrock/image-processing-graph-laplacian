@@ -126,7 +126,7 @@ def compute_and_display_affinity_matrix(M, N, phi, Pi, pixel_x, pixel_y):
     K_pixel = np.dot((phi[concerned_pixel, :] * Pi), phi.T)  # One line of K
     K_pixel = K_pixel.reshape(M, N)
 
-    display_or_save('affinity_{0}x{1}.png'.format(pixel_x, pixel_y), K_pixel, vmin=0, vmax=1, cmap='RdBu_r')
+    display_or_save('affinity_{0}x{1}.png'.format(pixel_x, pixel_y), K_pixel, vmin=0, vmax=1, cmap='binary')
     logger.info('Displayed affinity matrix of pixel {0}x{1}'.format(pixel_x, pixel_y))
 
 
@@ -205,8 +205,8 @@ def image_processing(y, cr=None, cb=None, **kwargs):
     # Sampling
     sampling_code = kwargs.get('sampling', sampling.SPATIALLY_UNIFORM)
     sampling_function = sampling.methods[sampling_code]
-    #sample_size = int(M*N*0.01)
-    sample_size = 20
+    sample_size = int(M*N*0.01)
+    #sample_size = 25
     sample_indices = sampling_function(M, N, sample_size)
     logger.info('Number of sample pixels: Theory {0} / Real {1} (or {2:.2f}% of the all pixels)'.format(sample_size, len(sample_indices), (len(sample_indices)*100.)/(M*N)))
     #display_sample_pixels(y, sample_indices)
@@ -282,6 +282,7 @@ if __name__ == '__main__':
     set_up_logging()
 
     y = misc.imread(img_name)
+    #y = y[:,:,0]
     logger.info("Image '{0}' has shape {1} => {2} pixels".format(img_name, y.shape, y.shape[0]*y.shape[1]))
     if len(y.shape) == 2:  # Detect gray scale
         z = image_processing(y)[0]
