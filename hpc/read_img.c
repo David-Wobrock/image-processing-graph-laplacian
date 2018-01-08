@@ -32,6 +32,7 @@ int read_png(const char* const filename, png_bytep** row_pointers, int* const wi
     if (setjmp(png_jmpbuf(png_ptr)))
     {
         png_destroy_read_struct(&png_ptr, NULL, NULL);
+        fclose(f_ptr);
         return -1;
     }
 
@@ -43,17 +44,19 @@ int read_png(const char* const filename, png_bytep** row_pointers, int* const wi
     *height = png_get_image_height(png_ptr, info_ptr);
     color_type = png_get_color_type(png_ptr, info_ptr);
 
-    if (color_type == PNG_COLOR_TYPE_RGB ||
-        color_type == PNG_COLOR_TYPE_RGB_ALPHA)
+    if (color_type == PNG_COLOR_TYPE_RGB || color_type == PNG_COLOR_TYPE_RGB_ALPHA)
+    {
         png_set_rgb_to_gray(png_ptr, 1, -1, -1);
+    }
 
     png_read_update_info(png_ptr, info_ptr);
 
-    unsigned int i;
     unsigned int num_row_bytes = png_get_rowbytes(png_ptr, info_ptr);
     *row_pointers = (png_bytep*) malloc(sizeof(png_bytep) * *height);
-    for (i = 0; i < *height; ++i)
+    for (unsigned int i = 0; i < *height; ++i)
+    {
         (*row_pointers)[i] = (png_bytep) malloc(num_row_bytes);
+    }
 
     png_read_image(png_ptr, *row_pointers);
 

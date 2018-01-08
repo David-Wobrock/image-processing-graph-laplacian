@@ -1,5 +1,7 @@
 #include "gram_schmidt.h"
 
+#include "utils.h"
+
 /*
 Projection operator: proj_u(v) = (<u, v> / <u, u>) * u
 <u, v> = u^T*v (dot product)
@@ -61,4 +63,23 @@ void OrthonormaliseVecs(Vec* X, const unsigned int n, const unsigned int p)
 
     VecDestroy(&proj_vec);
     VecDestroy(&sum_vec);
+}
+
+Mat OrthonormaliseMat(Mat X)
+{
+    PetscInt n, p;
+    MatGetSize(X, &n, &p);
+
+    Mat Y;
+
+    Vec* vecs = Mat2Vecs(X);
+    OrthonormaliseVecs(vecs, n, p);
+    Vecs2Mat(vecs, &Y, p);
+
+    for (unsigned int i = 0; i < p; ++i)
+    {
+        VecDestroy(vecs+i);
+    }
+    free(vecs);
+    return Y;
 }

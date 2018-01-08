@@ -205,8 +205,8 @@ def image_processing(y, cr=None, cb=None, **kwargs):
     # Sampling
     sampling_code = kwargs.get('sampling', sampling.SPATIALLY_UNIFORM)
     sampling_function = sampling.methods[sampling_code]
-    sample_size = int(M*N*0.01)
-    #sample_size = 25
+    #sample_size = int(M*N*0.01)
+    sample_size = 50
     sample_indices = sampling_function(M, N, sample_size)
     logger.info('Number of sample pixels: Theory {0} / Real {1} (or {2:.2f}% of the all pixels)'.format(sample_size, len(sample_indices), (len(sample_indices)*100.)/(M*N)))
     #display_sample_pixels(y, sample_indices)
@@ -215,10 +215,11 @@ def image_processing(y, cr=None, cb=None, **kwargs):
     affinity_code = kwargs.get('affinity', affinity_methods.PHOTOMETRIC)
     affinity_function = affinity_methods.methods[affinity_code]
     phi, Pi = nystroem(y, sample_indices, affinity_function)
-    
+
     # Display affinity vector of a pixel
-    phi_perm = permutation(phi, sample_indices)
-    compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 65, 65)
+    #phi_perm = permutation(phi, sample_indices)
+    phi_perm = phi
+    compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 0, 5)
     #compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 165, 65)
     #compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 80, 120)
     #compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 2373, 3441)

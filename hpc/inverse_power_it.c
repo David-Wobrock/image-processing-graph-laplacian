@@ -17,7 +17,9 @@ static Vec* BuildRandomVectors(const unsigned int n, const unsigned int p)
     Vec* X_k = (Vec*) malloc(sizeof(Vec) * p);
     for (unsigned int i = 0; i < p; ++i)
     {
-        VecCreate(PETSC_COMM_WORLD, &(X_k[i])); VecSetSizes(X_k[i], PETSC_DECIDE, n); VecSetFromOptions(X_k[i]);
+        VecCreate(PETSC_COMM_WORLD, &(X_k[i]));
+        VecSetSizes(X_k[i], PETSC_DECIDE, n);
+        VecSetFromOptions(X_k[i]);
     }
 
     // Fill with random, seed=rank

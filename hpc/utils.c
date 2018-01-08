@@ -10,6 +10,11 @@ unsigned int num2y(const unsigned int num, const unsigned int num_col)
     return num % num_col;
 }
 
+unsigned int xy2num(const unsigned int x, const unsigned int y, const unsigned int num_col)
+{
+    return x*num_col + y;
+}
+
 /* Pass uninitialised matrix
 Done in COMM_WORLD
 */
@@ -47,4 +52,39 @@ void Vecs2Mat(Vec* vecs, Mat* m, const unsigned int ncols)
 
     MatAssemblyBegin(*m, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(*m, MAT_FINAL_ASSEMBLY);
+}
+
+Vec* Mat2Vecs(Mat m)
+{
+    unsigned int i;
+
+    PetscInt n, p;
+    MatGetSize(m, &n, &p);
+
+    // Create
+    Vec* x = (Vec*) malloc(sizeof(Vec) * p);
+    for (i = 0; i < p; ++i)
+    {
+        VecCreate(PETSC_COMM_WORLD, x+i);
+        VecSetSizes(x[i], PETSC_DECIDE, n);
+        VecSetFromOptions(x[i]);
+    }
+
+    // Fill
+    for (i = 0; i < p; ++i)
+    {
+        MatGetColumnVector(m, x[i], i);
+    }
+
+    // Assemble
+    for (i = 0; i < p; ++i)
+    {
+        VecAssemblyBegin(x[i]);
+    }
+    for (i = 0; i < p; ++i)
+    {
+        VecAssemblyEnd(x[i]);
+    }
+
+    return x;
 }
