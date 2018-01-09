@@ -309,8 +309,8 @@ static void ComputeAndSaveAffinityMatrixOfPixelNum(Mat phi, Mat Pi, const unsign
     PetscMPIInt rank;
     MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
 
-    PetscInt N, p;
-    MatGetSize(phi, &N, &p);
+    PetscInt p;
+    MatGetSize(phi, NULL, &p);
 
     // Get one row of the eigenvalues (as diagonal matrix)
     Mat phi_Vec;
@@ -335,25 +335,29 @@ static void ComputeAndSaveAffinityMatrixOfPixelNum(Mat phi, Mat Pi, const unsign
     MatAssemblyBegin(phi_Vec, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(phi_Vec, MAT_FINAL_ASSEMBLY);
 
-    // Mult phi_Vec and Pi_Vec
+    // Mult phi_Vec and Pi
     Mat tmp;
-    MatMatMult(phi_Vec, Pi, MAT_INITIAL_MATRIX, 1.0, &tmp);
+    MatMatMult(phi_Vec, Pi, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &tmp);
+    MatView(phi_Vec, PETSC_VIEWER_STDOUT_WORLD);
+    MatView(Pi, PETSC_VIEWER_STDOUT_WORLD);
+    MatView(tmp, PETSC_VIEWER_STDOUT_WORLD);
     MatDestroy(&phi_Vec);
 
     // Mult result with phi_T
     Mat phi_T, affinity_img_on_vec;
-    //MatMatTransposeMult(tmp, phi, MAT_INITIAL_MATRIX, 1.0, &affinity_img_on_vec);
+    //MatMatTransposeMult(tmp, phi, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &affinity_img_on_vec);
     MatTranspose(phi, MAT_INITIAL_MATRIX, &phi_T);
-    MatMatMult(tmp, phi_T, MAT_INITIAL_MATRIX, 1.0, &affinity_img_on_vec);
+    MatMatMult(tmp, phi_T, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &affinity_img_on_vec);
     MatDestroy(&phi_T);
     MatDestroy(&tmp);
 
+    MatView(affinity_img_on_vec, PETSC_VIEWER_STDOUT_WORLD);
     // Rearrange vector into image (on one proc) and save
     png_bytep* img_bytes = VecMat2pngbytes(affinity_img_on_vec, width, height, 255);
     MatDestroy(&affinity_img_on_vec);
     if (rank == 0)
     {
-        write_png("output.png", img_bytes, width, height);
+        write_png("affinity.png", img_bytes, width, height);
         for (unsigned int i = 0; i < height; ++i)
         {
             free(img_bytes[i]);
@@ -468,14 +472,16 @@ int main(int argc, char** argv)
     MatAssemblyEnd(Pi_Inv, MAT_FINAL_ASSEMBLY);
 
     // Nyström
-    //MatView(Phi_A, PETSC_VIEWER_STDOUT_WORLD);
-    //MatView(Pi, PETSC_VIEWER_STDOUT_WORLD);
     Mat phi = Nystroem(K_B, Phi_A, Pi_Inv, width*height, sample_size, p);
     MatDestroy(&Phi_A);
     MatDestroy(&Pi_Inv);
 
     // Affinity = phi*Pi*phiT
-    ComputeAndSaveAffinityMatrixOfPixel(phi, Pi, width, height, 0, 5);
+    // TODO permutation doesn't quite work yet
+    //Mat phi_perm = Permutation(phi, sample_indices, sample_size);
+    //ComputeAndSaveAffinityMatrixOfPixel(phi_perm, Pi, width, height, 0, 1);
+    //MatDestroy(&phi_perm);
+    ComputeAndSaveAffinityMatrixOfPixel(phi, Pi, width, height, 0, 1);
 
     // End
     PetscPrintf(PETSC_COMM_WORLD, "Total computation time: %fs\n", MPI_Wtime() - start_time);

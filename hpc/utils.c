@@ -88,3 +88,48 @@ Vec* Mat2Vecs(Mat m)
 
     return x;
 }
+
+/*
+The first rows of the input matrix will be put at the global position specified by
+the sample_indices.
+*/
+Mat Permutation(Mat m, const unsigned int* const sample_indices, const unsigned int num_sample_indices)
+{
+    Mat reordered;
+    MatDuplicate(m, MAT_DO_NOT_COPY_VALUES, &reordered);
+
+    // Fill in correct order
+    PetscInt nb_cols, istart, iend, new_pos;
+    const PetscInt* col_indices;
+    const PetscScalar* values;
+    MatGetOwnershipRange(m, &istart, &iend);
+    for (PetscInt i = istart; i < iend; ++i)
+    {
+        MatGetRow(m, i, &nb_cols, &col_indices, &values);
+
+        // Find where this row goes in the new matrix
+        if (i < num_sample_indices)
+        {
+            new_pos = sample_indices[i];
+        }
+        else
+        {
+            // Find how many sample indices are before
+            unsigned int num_previous_sample_indices = 0;
+            while (num_previous_sample_indices < num_sample_indices && sample_indices[num_previous_sample_indices] <= (i - num_sample_indices))
+            {
+                ++num_previous_sample_indices;
+            }
+            new_pos = i - num_sample_indices + num_previous_sample_indices;
+        }
+
+        MatSetValues(reordered, 1, &new_pos, nb_cols, col_indices, values, INSERT_VALUES);
+        MatRestoreRow(m, i, &nb_cols, &col_indices, &values);
+    }
+
+    // Assemble
+    MatAssemblyBegin(reordered, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(reordered, MAT_FINAL_ASSEMBLY);
+
+    return reordered;
+}
