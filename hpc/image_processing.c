@@ -17,6 +17,7 @@
 #include "affinity.h"
 #include "eigendecomposition.h"
 #include "nystroem.h"
+#include "sinkhorn.h"
 
 /*
 Initialize Slepc/Petsc/MPI
@@ -127,24 +128,40 @@ int main(int argc, char** argv)
     MatDestroy(&K_A);
 
     // Nyström
+    double start_nystroem = MPI_Wtime();
+    PetscPrintf(PETSC_COMM_WORLD, "Computing Nyström approximation... ");
     Mat phi = Nystroem(K_B, phi_A, Pi_Inv, width*height, sample_size, p);
+    PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_nystroem);
     MatDestroy(&phi_A);
     MatDestroy(&Pi_Inv);
     MatDestroy(&K_B);
 
-    // Affinity = phi*Pi*phiT
+    // Display affinity = phi*Pi*phiT
     // TODO permutation doesn't quite work yet
     //Mat phi_perm = Permutation(phi, sample_indices, sample_size);
     //ComputeAndSaveAffinityMatrixOfPixel(phi_perm, Pi, width, height, 0, 1);
     //MatDestroy(&phi_perm);
-    ComputeAndSaveAffinityMatrixOfPixel(phi, Pi, width, height, 0, 1);
+    //ComputeAndSaveAffinityMatrixOfPixel(phi, Pi, width, height, 0, 1);
+
+    // Sinkhorn
+    double start_sinkhorn = MPI_Wtime();
+    PetscPrintf(PETSC_COMM_WORLD, "Computing Sinkhorn... ");
+    Mat W_A, W_B;
+    Sinkhorn(phi, Pi, &W_A, &W_B);
+    PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_sinkhorn);
+    MatDestroy(&phi);
+    MatDestroy(&Pi);
+
+    // Orthogonalise
+
+    MatDestroy(&W_A);
+    MatDestroy(&W_B);
+    // Permutation
 
     // End
     PetscPrintf(PETSC_COMM_WORLD, "Total computation time: %fs\n", MPI_Wtime() - start_time);
 
     // Clean up
-    MatDestroy(&phi);
-    MatDestroy(&Pi);
     free(sample_indices);
 
     for (unsigned int i = 0; i < height; ++i)

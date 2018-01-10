@@ -4,6 +4,8 @@
 #include <string.h>
 #include <mpi.h>
 
+#include "utils.h"
+
 /*
 vec_mat is a 1xN matrix with values between 0 and 1
 Returns a filled png_bytes for proc with rank 0 only
@@ -25,7 +27,6 @@ png_bytep* VecMat2pngbytes(Mat vec_mat, const unsigned int width, const unsigned
         }
 
         // All data is on process 0 already, get all values and cast to png_byte
-        const int zero = 0;
         PetscInt* col_indices = (PetscInt*) malloc(sizeof(PetscInt) * width);
         PetscScalar* values = (PetscScalar*) malloc(sizeof(PetscScalar) * width);
         for (unsigned int i = 0; i < height; ++i)
@@ -34,7 +35,7 @@ png_bytep* VecMat2pngbytes(Mat vec_mat, const unsigned int width, const unsigned
             {
                 col_indices[j] = j + width*i;
             }
-            MatGetValues(vec_mat, 1, &zero, width, col_indices, values);
+            MatGetValues(vec_mat, 1, &ZERO, width, col_indices, values);
             for (unsigned int j = 0; j < width; ++j)
             {
                 img_bytes[i][j] = ((png_byte) (values[j] * scale));

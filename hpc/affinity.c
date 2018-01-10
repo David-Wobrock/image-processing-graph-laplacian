@@ -158,10 +158,9 @@ static void ComputeAndSaveAffinityMatrixOfPixelNum(Mat phi, Mat Pi, const unsign
     if (start <= pixel_num && pixel_num < end) {
         const PetscScalar* values;
         MatGetRow(phi, pixel_num, NULL, NULL, &values);
-        const int zero = 0;
         for (unsigned int i = 0; i < p; ++i)
         {
-            MatSetValues(phi_Vec, 1, &zero, 1, (int*)&i, values+i, INSERT_VALUES);
+            MatSetValues(phi_Vec, 1, &ZERO, 1, (int*)&i, values+i, INSERT_VALUES);
         }
         MatRestoreRow(phi, pixel_num, NULL, NULL, &values);
     }
