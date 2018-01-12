@@ -123,7 +123,7 @@ int main(int argc, char** argv)
     const unsigned int p = sample_size; // num eigenpairs
     PetscPrintf(PETSC_COMM_WORLD, "Computing %d largest eigenvalues of affinity matrix... ", p);
     Mat phi_A, Pi, Pi_Inv;
-    Eigendecomposition(K_A, p, &phi_A, &Pi, &Pi_Inv); // A = phi*Pi*phi_T
+    Eigendecomposition(K_A, p, &phi_A, &Pi, &Pi_Inv, NULL); // A = phi*Pi*phi_T
     PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_eps);
     MatDestroy(&K_A);
 
@@ -137,10 +137,9 @@ int main(int argc, char** argv)
     MatDestroy(&K_B);
 
     // Display affinity = phi*Pi*phiT
-    // TODO permutation doesn't quite work yet
-    //Mat phi_perm = Permutation(phi, sample_indices, sample_size);
-    //ComputeAndSaveAffinityMatrixOfPixel(phi_perm, Pi, width, height, 0, 1);
-    //MatDestroy(&phi_perm);
+    Mat phi_perm = Permutation(phi, sample_indices, sample_size);
+    ComputeAndSaveAffinityMatrixOfPixel(phi_perm, Pi, width, height, 0, 1);
+    MatDestroy(&phi_perm);
     //ComputeAndSaveAffinityMatrixOfPixel(phi, Pi, width, height, 0, 1);
 
     // Sinkhorn
@@ -148,15 +147,23 @@ int main(int argc, char** argv)
     PetscPrintf(PETSC_COMM_WORLD, "Computing Sinkhorn... ");
     Mat W_A, W_B;
     Sinkhorn(phi, Pi, &W_A, &W_B);
+    Mat W_A_tmp = SetNegativesToZero(W_A);
+    MatDestroy(&W_A);
+    W_A = W_A_tmp;
     PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_sinkhorn);
     MatDestroy(&phi);
     MatDestroy(&Pi);
 
     // Orthogonalise
-
+    Mat V, S;
+    EigendecompositionAndOrthogonalisation(W_A, W_B, &V, &S);
     MatDestroy(&W_A);
     MatDestroy(&W_B);
+
     // Permutation
+
+    //MatDestroy(&V);
+    //MatDestroy(&S);
 
     // End
     PetscPrintf(PETSC_COMM_WORLD, "Total computation time: %fs\n", MPI_Wtime() - start_time);

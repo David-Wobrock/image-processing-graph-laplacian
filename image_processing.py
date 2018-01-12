@@ -126,7 +126,7 @@ def compute_and_display_affinity_matrix(M, N, phi, Pi, pixel_x, pixel_y):
     K_pixel = np.dot((phi[concerned_pixel, :] * Pi), phi.T)  # One line of K
     K_pixel = K_pixel.reshape(M, N)
 
-    display_or_save('affinity_{0}x{1}.png'.format(pixel_x, pixel_y), K_pixel, vmin=0, vmax=1, cmap='binary')
+    display_or_save('affinity_{0}x{1}.png'.format(pixel_x, pixel_y), K_pixel, vmin=0, vmax=1, cmap='gray')
     logger.info('Displayed affinity matrix of pixel {0}x{1}'.format(pixel_x, pixel_y))
 
 
@@ -218,7 +218,7 @@ def image_processing(y, cr=None, cb=None, **kwargs):
 
     # Display affinity vector of a pixel
     phi_perm = permutation(phi, sample_indices)
-    compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 0, 0)
+    compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 0, 1)
     #compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 165, 65)
     #compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 80, 120)
     #compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 2373, 3441)

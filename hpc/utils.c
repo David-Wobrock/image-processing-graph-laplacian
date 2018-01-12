@@ -150,7 +150,7 @@ Mat Permutation(Mat m, const unsigned int* const sample_indices, const unsigned 
         {
             // Find how many sample indices are before
             unsigned int num_previous_sample_indices = 0;
-            while (num_previous_sample_indices < num_sample_indices && sample_indices[num_previous_sample_indices] <= (i - num_sample_indices))
+            while (num_previous_sample_indices < num_sample_indices && (sample_indices[num_previous_sample_indices]) <= (i - num_sample_indices + num_previous_sample_indices))
             {
                 ++num_previous_sample_indices;
             }
@@ -298,6 +298,50 @@ Mat GetFirstRows(Mat x, const unsigned int n)
         free(col_indices);
         free(row_indices);
     }
+
+    MatAssemblyBegin(y, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(y, MAT_FINAL_ASSEMBLY);
+    return y;
+}
+
+Mat SetNegativesToZero(Mat x)
+{
+    PetscInt nb_cols;
+    MatGetSize(x, NULL, &nb_cols);
+
+    Mat y;
+    MatDuplicate(x, MAT_DO_NOT_COPY_VALUES, &y);
+
+    // Fill
+    PetscInt istart, iend;
+    MatGetOwnershipRange(x, &istart, &iend);
+    PetscInt *row_indices, *col_indices;
+    row_indices = (PetscInt*) malloc(sizeof(PetscInt) * (iend-istart));
+    col_indices = (PetscInt*) malloc(sizeof(PetscInt) * nb_cols);
+    for (PetscInt i = 0; i < (iend-istart); ++i)
+    {
+        row_indices[i] = i + istart;
+    }
+    for (PetscInt i = 0; i < nb_cols; ++i)
+    {
+        col_indices[i] = i;
+    }
+    PetscScalar* values = (PetscScalar*) malloc(sizeof(PetscScalar) * (iend-istart) * nb_cols);
+
+    MatGetValues(x, iend-istart, row_indices, nb_cols, col_indices, values);
+    // Set to 0 when negative
+    for (unsigned int i = 0; i < ((iend-istart) * nb_cols); ++i)
+    {
+        if (values[i] < 0.)
+        {
+            values[i] = 0.;
+        }
+    }
+    MatSetValues(y, iend-istart, row_indices, nb_cols, col_indices, values, INSERT_VALUES);
+
+    free(values);
+    free(col_indices);
+    free(row_indices);
 
     MatAssemblyBegin(y, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(y, MAT_FINAL_ASSEMBLY);

@@ -4,25 +4,25 @@
 
 static void UpdateVector(Mat v, Mat x, Mat phi, Mat Pi, Mat phi_T)
 {
-    Mat tmp, tmp2, tmp3, res;
+    Mat right_part, left_part, denominator, res;
 
     // Calc v = 1. / phi*Pi*phi_T*x;
-    MatMatMult(phi_T, x, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &tmp);
-    MatMatMult(Pi, tmp, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &tmp2);
-    MatMatMult(phi, tmp2, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &tmp3);
+    MatMatMult(phi, Pi, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &left_part);
+    MatMatMult(phi_T, x, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &right_part);
+    MatMatMult(left_part, right_part, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &denominator);
 
     // Create another matrix for inverse 1/x
     MatDuplicate(v, MAT_DO_NOT_COPY_VALUES, &res);
     PetscInt istart, iend;
-    MatGetOwnershipRange(tmp3, &istart, &iend);
+    MatGetOwnershipRange(denominator, &istart, &iend);
     const PetscScalar* values;
     PetscScalar inv_values;
     for (PetscInt i = istart; i < iend; ++i)
     {
-        MatGetRow(tmp3, i, NULL, NULL, &values);
+        MatGetRow(denominator, i, NULL, NULL, &values);
         inv_values = 1./values[0];
         MatSetValues(res, 1, &i, 1, &ZERO, &inv_values, INSERT_VALUES);
-        MatRestoreRow(tmp3, i, NULL, NULL, &values);
+        MatRestoreRow(denominator, i, NULL, NULL, &values);
     }
     MatAssemblyBegin(res, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(res, MAT_FINAL_ASSEMBLY);
@@ -31,9 +31,9 @@ static void UpdateVector(Mat v, Mat x, Mat phi, Mat Pi, Mat phi_T)
     MatCopy(res, v, SAME_NONZERO_PATTERN);
 
     MatDestroy(&res);
-    MatDestroy(&tmp3);
-    MatDestroy(&tmp2);
-    MatDestroy(&tmp);
+    MatDestroy(&denominator);
+    MatDestroy(&right_part);
+    MatDestroy(&left_part);
 }
 
 /*

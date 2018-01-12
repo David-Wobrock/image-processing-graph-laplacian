@@ -41,6 +41,7 @@ Mat Nystroem(Mat B, Mat phi_A, Mat Pi_A_Inv, const unsigned int N, const unsigne
     MatTransposeMatMult(B, phi_A, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &part_lower);
     MatMatMult(part_lower, Pi_A_Inv, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &lower);
     MatDestroy(&part_lower);
+    MatView(lower, PETSC_VIEWER_STDOUT_WORLD);
 
     MatGetOwnershipRange(lower, &istart, &iend);
     values = (PetscScalar*) malloc(sizeof(PetscScalar) * p * (iend-istart));

@@ -14,3 +14,5 @@ Mat Permutation(Mat m, const unsigned int* const sample_indices, const unsigned 
 Mat GetFirstCols(Mat x, const unsigned int n);
 Mat GetLastCols(Mat x, const unsigned int n);
 Mat GetFirstRows(Mat x, const unsigned int n);
+
+Mat SetNegativesToZero(Mat x);
