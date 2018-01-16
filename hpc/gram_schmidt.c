@@ -34,7 +34,7 @@ Uses Gram-Schimdt
 Input: X is already created and initialised, p the number of cols of X, n number of rows of X
 Output: Orthonormal X
 */
-void OrthonormaliseVecs(Vec* X, const unsigned int n, const unsigned int p)  
+void OrthonormaliseVecs(Vec* X, const unsigned int n, const unsigned int p)
 {
     Vec sum_vec, proj_vec;
 
@@ -65,6 +65,9 @@ void OrthonormaliseVecs(Vec* X, const unsigned int n, const unsigned int p)
     VecDestroy(&sum_vec);
 }
 
+/*
+Orthonormalise columns of the input matrix
+*/
 Mat OrthonormaliseMat(Mat X)
 {
     PetscInt n, p;

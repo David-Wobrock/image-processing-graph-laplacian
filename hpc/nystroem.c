@@ -2,7 +2,7 @@
 
 #include <stdlib.h>
 
-Mat Nystroem(Mat B, Mat phi_A, Mat Pi_A_Inv, const unsigned int N, const unsigned n, const unsigned p)
+Mat Nystroem(Mat B, Mat phi_A, Mat Pi_A_Inv, const unsigned int N, const unsigned int n, const unsigned int p)
 {
     Mat phi;
     MatCreate(PETSC_COMM_WORLD, &phi);
@@ -38,10 +38,9 @@ Mat Nystroem(Mat B, Mat phi_A, Mat Pi_A_Inv, const unsigned int N, const unsigne
 
     // Fill lower part (each node fills a part of the matrix)
     Mat lower, part_lower;
-    MatTransposeMatMult(B, phi_A, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &part_lower);
-    MatMatMult(part_lower, Pi_A_Inv, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &lower);
+    MatMatMult(phi_A, Pi_A_Inv, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &part_lower);
+    MatTransposeMatMult(B, part_lower, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &lower);
     MatDestroy(&part_lower);
-    MatView(lower, PETSC_VIEWER_STDOUT_WORLD);
 
     MatGetOwnershipRange(lower, &istart, &iend);
     values = (PetscScalar*) malloc(sizeof(PetscScalar) * p * (iend-istart));

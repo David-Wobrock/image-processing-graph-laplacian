@@ -83,6 +83,11 @@ void Eigendecomposition(Mat A, const unsigned int num_eigenpairs, Mat* eigenvect
     for (unsigned int i = 0; i < num_eigenpairs; ++i)
     {
         EPSGetEigenpair(eps, i, &eigval, NULL, eigvec, NULL);
+        if (eigval < 1e-15) // Hacky way so that eigenvalues stay positive and are not too small
+        {
+            eigval = 1e-15;
+        }
+
         if (eigenvectors)
         {
             VecGetValues(eigvec, iend-istart, row_indices, values);

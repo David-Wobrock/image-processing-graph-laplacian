@@ -218,7 +218,7 @@ def image_processing(y, cr=None, cb=None, **kwargs):
 
     # Display affinity vector of a pixel
     phi_perm = permutation(phi, sample_indices)
-    compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 0, 1)
+    compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 0, 0)
     #compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 165, 65)
     #compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 80, 120)
     #compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 2373, 3441)
