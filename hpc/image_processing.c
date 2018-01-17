@@ -121,8 +121,8 @@ int main(int argc, char** argv)
     // Solve eigenvalue problem
     // Use SLEPc because we need greatest eigenelements
     double start_eps = MPI_Wtime();
-    const unsigned int p = sample_size; // num eigenpairs
-    //const unsigned int p = 20; // num eigenpairs
+    //const unsigned int p = sample_size; // num eigenpairs
+    const unsigned int p = 200; // num eigenpairs
     PetscPrintf(PETSC_COMM_WORLD, "Computing %d largest eigenvalues of affinity matrix... ", p);
     Mat phi_A, Pi, Pi_Inv;
     Eigendecomposition(K_A, p, &phi_A, &Pi, &Pi_Inv, NULL); // A = phi*Pi*phi_T
@@ -142,10 +142,13 @@ int main(int argc, char** argv)
     MatDestroy(&K_B);
 
     // Display affinity = phi*Pi*phiT
+    const unsigned int display_x = 55;
+    const unsigned int display_y = 425;
+    PetscPrintf(PETSC_COMM_WORLD, "Displaying affinity matrix at %dx%d... ", display_x, display_y);
     Mat phi_perm = Permutation(phi, sample_indices, sample_size);
-    ComputeAndSaveAffinityMatrixOfPixel(phi_perm, Pi, width, height, 0, 0);
+    ComputeAndSaveAffinityMatrixOfPixel(phi_perm, Pi, width, height, display_x, display_y);
     MatDestroy(&phi_perm);
-    PetscPrintf(PETSC_COMM_WORLD, "Written affinity image\n");
+    PetscPrintf(PETSC_COMM_WORLD, "done\n");
 
     // Sinkhorn
     //double start_sinkhorn = MPI_Wtime();

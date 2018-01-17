@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 #include <petscvec.h>
+#include <string.h>
 
 #include "utils.h"
 #include "write_img.h"
@@ -137,7 +138,7 @@ void ComputeAffinityMatrices(Mat* K_A, Mat* K_B, const png_bytep* const img_byte
     MatAssemblyEnd(*K_B, MAT_FINAL_ASSEMBLY);
 }
 
-static void ComputeAndSaveAffinityMatrixOfPixelNum(Mat phi, Mat Pi, const unsigned int width, const unsigned int height, const unsigned int pixel_num)
+static void ComputeAndSaveAffinityMatrixOfPixelNum(Mat phi, Mat Pi, const unsigned int width, const unsigned int height, const unsigned int pixel_num, const char* const filename)
 {
     PetscMPIInt rank;
     MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
@@ -185,7 +186,7 @@ static void ComputeAndSaveAffinityMatrixOfPixelNum(Mat phi, Mat Pi, const unsign
     MatDestroy(&affinity_img_on_vec);
     if (rank == 0)
     {
-        write_png("affinity.png", img_bytes, width, height);
+        write_png(filename, img_bytes, width, height);
         for (unsigned int i = 0; i < height; ++i)
         {
             free(img_bytes[i]);
@@ -196,5 +197,14 @@ static void ComputeAndSaveAffinityMatrixOfPixelNum(Mat phi, Mat Pi, const unsign
 
 void ComputeAndSaveAffinityMatrixOfPixel(Mat phi, Mat Pi, const unsigned int width, const unsigned int height, const unsigned int pixel_x, const unsigned int pixel_y)
 {
-    ComputeAndSaveAffinityMatrixOfPixelNum(phi, Pi, width, height, xy2num(pixel_x, pixel_y, width));
+    char filename[100], x_name[20], y_name[20];
+    sprintf(x_name, "%d", pixel_x);
+    sprintf(y_name, "%d", pixel_y);
+    strcpy(filename, "affinity_");
+    strcat(filename, x_name);
+    strcat(filename, "x");
+    strcat(filename, y_name);
+    strcat(filename, ".png");
+
+    ComputeAndSaveAffinityMatrixOfPixelNum(phi, Pi, width, height, xy2num(pixel_x, pixel_y, width), filename);
 }
