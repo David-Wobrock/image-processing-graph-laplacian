@@ -3,3 +3,4 @@
 
 void OrthonormaliseVecs(Vec* X, const unsigned int n, const unsigned int p);
 Mat OrthonormaliseMat(Mat X);
+Mat OrthogonaliseMat(Mat X);

@@ -1,5 +1,8 @@
 #include "utils.h"
 
+#include <mpi.h>
+#include <stdlib.h>
+
 #define min(a, b) (a <= b ? a : b)
 
 const PetscInt ZERO = 0;
@@ -383,4 +386,131 @@ Mat MatCreateIdentity(const unsigned int n, const MatType format)
     MatAssemblyBegin(ident, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(ident, MAT_FINAL_ASSEMBLY);
     return ident;
+}
+
+/*
+vec_mat is a 1xN matrix with values between 0 and 1
+Returns a filled png_bytes for proc with rank 0 only
+Returns NULL for the others
+*/
+png_bytep* OneRowMat2pngbytes(Mat vec_mat, const unsigned int width, const unsigned int height, const int scale)
+{
+    PetscMPIInt rank;
+    MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+
+    // Allocate memory for image for proc 0
+    png_bytep* img_bytes = NULL;
+    if (rank == 0)
+    {
+        img_bytes = (png_bytep*) malloc(sizeof(png_bytep) * height);
+        for (unsigned int i = 0; i < height; ++i)
+        {
+            img_bytes[i] = (png_bytep) malloc(sizeof(png_byte) * width);
+        }
+
+        // All data is on process 0 already, get all values and cast to png_byte
+        PetscInt* col_indices = (PetscInt*) malloc(sizeof(PetscInt) * width);
+        PetscScalar* values = (PetscScalar*) malloc(sizeof(PetscScalar) * width);
+        for (unsigned int i = 0; i < height; ++i)
+        {
+            for (unsigned int j = 0; j < width; ++j)
+            {
+                col_indices[j] = j + width*i;
+            }
+            MatGetValues(vec_mat, 1, &ZERO, width, col_indices, values);
+            for (unsigned int j = 0; j < width; ++j)
+            {
+                img_bytes[i][j] = ((png_byte) (values[j] * scale));
+            }
+        }
+        free(values);
+        free(col_indices);
+    }
+
+    // Gather all data to process 0
+    return img_bytes;
+}
+
+/*
+All processes have the whole img_bytes
+*/
+Mat pngbytes2OneColMat(const png_bytep* const img_bytes, const unsigned int width, const unsigned int height)
+{
+    Mat x;
+    MatCreate(PETSC_COMM_WORLD, &x);
+    MatSetSizes(x, PETSC_DECIDE, PETSC_DECIDE, width*height, 1);
+    MatSetType(x, MATMPIDENSE);
+    MatSetFromOptions(x);
+    MatSetUp(x);
+
+    // Each process fills a part
+    PetscInt istart, iend;
+    PetscInt x_pos, y_pos;
+    PetscScalar val;
+    MatGetOwnershipRange(x, &istart, &iend);
+    for (PetscInt i = istart; i < iend; ++i)
+    {
+        x_pos = num2x(i, width);
+        y_pos = num2y(i, width);
+        val = img_bytes[x_pos][y_pos];
+        MatSetValues(x, 1, &i, 1, &ZERO, &val, INSERT_VALUES);
+    }
+
+    MatAssemblyBegin(x, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(x, MAT_FINAL_ASSEMBLY);
+    return x;
+}
+
+/*
+On process rank 0, return an allocated an filled image
+The other processes get NULL
+*/
+png_bytep* OneColMat2pngbytes(Mat x, const unsigned int width, const unsigned int height)
+{
+    PetscMPIInt rank;
+    MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+
+    // Allocate memory for image for proc 0
+    png_bytep* img_bytes = NULL;
+    if (rank == 0)
+    {
+        img_bytes = (png_bytep*) malloc(sizeof(png_bytep) * height);
+        for (unsigned int i = 0; i < height; ++i)
+        {
+            img_bytes[i] = (png_bytep) malloc(sizeof(png_byte) * width);
+        }
+
+        // Fill img_bytes with local data and then receive the next data
+        PetscInt istart, iend, x_pos, y_pos;
+        PetscScalar val;
+        MatGetOwnershipRange(x, &istart, &iend);
+        for (PetscInt i = istart; i < iend; ++i)
+        {
+            x_pos = num2x(i, width);
+            y_pos = num2y(i, width);
+            MatGetValues(x, 1, &i, 1, &ZERO, &val);
+            img_bytes[x_pos][y_pos] = val;
+        }
+        for (PetscInt i = iend; i < (width*height); ++i)
+        {
+            x_pos = num2x(i, width);
+            y_pos = num2y(i, width);
+            MPI_Recv(&val, 1, MPI_DOUBLE, MPI_ANY_SOURCE, i, PETSC_COMM_WORLD, MPI_STATUS_IGNORE); // TODO can be improved instead of point2point com
+            img_bytes[x_pos][y_pos] = val;
+        }
+    }
+    else // Other processes send stuff to rank 0
+    {
+        PetscInt istart, iend;
+        PetscScalar val;
+        MatGetOwnershipRange(x, &istart, &iend);
+        for (PetscInt i = istart; i < iend; ++i)
+        {
+            MatGetValues(x, 1, &i, 1, &ZERO, &val);
+            MPI_Send(&val, 1, MPI_DOUBLE, 0, i, PETSC_COMM_WORLD); // TODO can be improved instead of point2point com
+        }
+    }
+
+    // Gather all data to process 0
+    return img_bytes;
 }

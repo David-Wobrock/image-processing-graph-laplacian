@@ -18,7 +18,6 @@ void Eigendecomposition(Mat A, const unsigned int num_eigenpairs, Mat* eigenvect
     EPSSetProblemType(eps, EPS_HEP); // Symmetric
     EPSSetDimensions(eps, num_eigenpairs, PETSC_DEFAULT, PETSC_DEFAULT);
     EPSSetType(eps, EPSKRYLOVSCHUR);
-    //EPSSetWhichEigenpairs(eps, EPS_LARGEST_REAL);
     EPSSetWhichEigenpairs(eps, EPS_LARGEST_MAGNITUDE);
     EPSSetFromOptions(eps);
 
@@ -83,10 +82,10 @@ void Eigendecomposition(Mat A, const unsigned int num_eigenpairs, Mat* eigenvect
     for (unsigned int i = 0; i < num_eigenpairs; ++i)
     {
         EPSGetEigenpair(eps, i, &eigval, NULL, eigvec, NULL);
-        if (eigval < 1e-15) // Hacky way so that eigenvalues stay positive and are not too small
+        /*if (eigval < 1e-15) // Hacky way so that eigenvalues stay positive and are not too small
         {
             eigval = 1e-15;
-        }
+        }*/
 
         if (eigenvectors)
         {
@@ -136,44 +135,4 @@ void Eigendecomposition(Mat A, const unsigned int num_eigenpairs, Mat* eigenvect
         MatAssemblyBegin(*eigenvalues_inv_sqrt, MAT_FINAL_ASSEMBLY);
         MatAssemblyEnd(*eigenvalues_inv_sqrt, MAT_FINAL_ASSEMBLY);
     }
-}
-
-void EigendecompositionAndOrthogonalisation(Mat A, Mat B, Mat* phi, Mat* Pi)
-{
-    PetscInt p;
-    MatGetSize(A, &p, NULL);
-
-    // Compute A_inv_sqrt using diagonalisation
-    Mat phi_A, phi_A_T, Pi_A_inv_sqrt;
-    Eigendecomposition(A, p, &phi_A, NULL, NULL, &Pi_A_inv_sqrt);
-    Mat tmp, A_inv_sqrt;
-    MatMatMult(phi_A, Pi_A_inv_sqrt, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &tmp);
-    MatTranspose(phi_A, MAT_INITIAL_MATRIX, &phi_A_T);
-    MatMatMult(tmp, phi_A_T, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &A_inv_sqrt);
-    MatDestroy(&phi_A_T);
-    MatDestroy(&tmp);
-    MatDestroy(&Pi_A_inv_sqrt);
-    MatDestroy(&phi_A);
-
-    // Q = A + A_inv_sqrt*B*B_T*A_inv_sqrt
-    Mat res, A_B, B_T, A_B_B_T;
-    MatMatMult(A_inv_sqrt, B, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &A_B);
-    MatTranspose(B, MAT_INITIAL_MATRIX, &B_T);
-    MatMatMult(A_B, B_T, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &A_B_B_T);
-    MatMatMult(A_B_B_T, A_inv_sqrt, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &res);
-    MatDestroy(&A_B_B_T);
-    MatDestroy(&B_T);
-    MatDestroy(&A_B);
-    MatDestroy(&A_inv_sqrt);
-
-    Mat Q;
-    Mat additionMats[2];
-    additionMats[0] = A;
-    additionMats[1] = res;
-    MatCreateComposite(PETSC_COMM_WORLD, 2, additionMats, &Q);
-    MatCompositeMerge(Q);
-    MatDestroy(&res);
-
-    // Eigendecomposition of Q
-    MatDestroy(&Q);
 }

@@ -19,6 +19,7 @@
 #include "nystroem.h"
 #include "filter.h"
 #include "gram_schmidt.h"
+#include "display.h"
 
 /*
 Initialize Slepc/Petsc/MPI
@@ -159,16 +160,37 @@ int main(int argc, char** argv)
     MatDestroy(&phi);
     MatDestroy(&Pi);
 
-    // Orthogonalise
-    //Mat V, S;
-    //EigendecompositionAndOrthogonalisation(W_A, W_B, &V, &S);
+    // Eigendecomposition and Nystroem
+    start_eps = MPI_Wtime();
+    PetscPrintf(PETSC_COMM_WORLD, "Computing %d largest eigenvalues of filter matrix... ", p);
+    Eigendecomposition(W_A, p, &phi_A, &Pi, &Pi_Inv, NULL); // A = phi*Pi*phi_T
+    MatView(Pi, PETSC_VIEWER_STDOUT_WORLD);
+    PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_eps);
     MatDestroy(&W_A);
-    MatDestroy(&W_B);
 
-    // Permutation
+    // Nyström
+    start_nystroem = MPI_Wtime();
+    PetscPrintf(PETSC_COMM_WORLD, "Computing Nyström approximation... ");
+    phi = Nystroem(W_B, phi_A, Pi_Inv, width*height, sample_size, p);
+    PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_nystroem);
+    MatDestroy(&phi_A);
+    MatDestroy(&Pi_Inv);
+    MatDestroy(&K_B);
 
-    //MatDestroy(&V);
-    //MatDestroy(&S);
+    // TODO necessary?
+    //Mat phi_orth = OrthogonaliseMat(phi);
+    //MatDestroy(&phi);
+    //phi = phi_orth;
+
+    // Can display
+    double start_output = MPI_Wtime();
+    PetscPrintf(PETSC_COMM_WORLD, "Permuting and computing output image... ");
+    phi_perm = Permutation(phi, sample_indices, sample_size);
+    ComputeAndSaveResult(img_bytes, phi_perm, Pi, width, height);
+    PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_output);
+    MatDestroy(&phi_perm);
+    MatDestroy(&phi);
+    MatDestroy(&Pi);
 
     // End
     PetscPrintf(PETSC_COMM_WORLD, "Total computation time: %fs\n", MPI_Wtime() - start_time);

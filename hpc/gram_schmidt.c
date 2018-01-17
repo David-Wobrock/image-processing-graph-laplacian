@@ -28,13 +28,7 @@ static void Projection(const Vec v, const Vec u, Vec* res)
     VecDestroy(&factor_vec);
 }
 
-/*
-Orthonormalise a basis of p column vectors
-Uses Gram-Schimdt
-Input: X is already created and initialised, p the number of cols of X, n number of rows of X
-Output: Orthonormal X
-*/
-void OrthonormaliseVecs(Vec* X, const unsigned int n, const unsigned int p)
+static void OrthogonaliseAndNormaliseVecs(Vec* X, const unsigned int n, const unsigned int p, const int normalise)
 {
     Vec sum_vec, proj_vec;
 
@@ -58,11 +52,25 @@ void OrthonormaliseVecs(Vec* X, const unsigned int n, const unsigned int p)
             VecAXPY(sum_vec, 1., proj_vec);
         }
         VecAXPBY(X[k], -1., 1, sum_vec);  // u_k = 1*v_k - sum
-        VecNormalize(X[k], NULL);
+        if (normalise)
+        {
+            VecNormalize(X[k], NULL);
+        }
     }
 
     VecDestroy(&proj_vec);
     VecDestroy(&sum_vec);
+}
+
+/*
+Orthonormalise a basis of p column vectors
+Uses Gram-Schimdt
+Input: X is already created and initialised, p the number of cols of X, n number of rows of X
+Output: Orthonormal X
+*/
+void OrthonormaliseVecs(Vec* X, const unsigned int n, const unsigned int p)
+{
+    OrthogonaliseAndNormaliseVecs(X, n, p, 1); // 1 => normalise
 }
 
 /*
@@ -77,6 +85,25 @@ Mat OrthonormaliseMat(Mat X)
 
     Vec* vecs = Mat2Vecs(X);
     OrthonormaliseVecs(vecs, n, p);
+    Vecs2Mat(vecs, &Y, p);
+
+    for (unsigned int i = 0; i < p; ++i)
+    {
+        VecDestroy(vecs+i);
+    }
+    free(vecs);
+    return Y;
+}
+
+Mat OrthogonaliseMat(Mat X)
+{
+    PetscInt n, p;
+    MatGetSize(X, &n, &p);
+
+    Mat Y;
+
+    Vec* vecs = Mat2Vecs(X);
+    OrthogonaliseAndNormaliseVecs(vecs, n, p, 0); // 0 => do not normalise
     Vecs2Mat(vecs, &Y, p);
 
     for (unsigned int i = 0; i < p; ++i)
