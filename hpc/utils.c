@@ -347,3 +347,40 @@ Mat SetNegativesToZero(Mat x)
     MatAssemblyEnd(y, MAT_FINAL_ASSEMBLY);
     return y;
 }
+
+PetscScalar VecMean(Vec x)
+{
+    PetscScalar sum;
+    // Sum
+    VecSum(x, &sum);
+
+    // Divide
+    PetscInt size;
+    VecGetSize(x, &size);
+    return sum / size;
+}
+
+/*
+Returns identity matrix of rank n and with specified format
+*/
+Mat MatCreateIdentity(const unsigned int n, const MatType format)
+{
+    Mat ident;
+    MatCreate(PETSC_COMM_WORLD, &ident);
+    MatSetSizes(ident, PETSC_DECIDE, PETSC_DECIDE, n, n);
+    MatSetType(ident, format);
+    MatSetFromOptions(ident);
+    MatSetUp(ident);
+
+    Vec ones;
+    VecCreate(PETSC_COMM_WORLD, &ones);
+    VecSetSizes(ones, PETSC_DECIDE, n);
+    VecSetFromOptions(ones);
+    VecSet(ones, 1.0);
+    MatDiagonalSet(ident, ones, INSERT_VALUES);
+    VecDestroy(&ones);
+
+    MatAssemblyBegin(ident, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(ident, MAT_FINAL_ASSEMBLY);
+    return ident;
+}

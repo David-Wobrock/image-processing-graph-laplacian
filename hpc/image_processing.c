@@ -17,7 +17,7 @@
 #include "affinity.h"
 #include "eigendecomposition.h"
 #include "nystroem.h"
-#include "sinkhorn.h"
+#include "filter.h"
 #include "gram_schmidt.h"
 
 /*
@@ -122,13 +122,10 @@ int main(int argc, char** argv)
     // Use SLEPc because we need greatest eigenelements
     double start_eps = MPI_Wtime();
     //const unsigned int p = sample_size; // num eigenpairs
-    const unsigned int p = 200; // num eigenpairs
+    const unsigned int p = 100; // num eigenpairs
     PetscPrintf(PETSC_COMM_WORLD, "Computing %d largest eigenvalues of affinity matrix... ", p);
     Mat phi_A, Pi, Pi_Inv;
     Eigendecomposition(K_A, p, &phi_A, &Pi, &Pi_Inv, NULL); // A = phi*Pi*phi_T
-    //Mat phi_A_orth = OrthonormaliseMat(phi_A);
-    //MatDestroy(&phi_A);
-    //phi_A = phi_A_orth;
     PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_eps);
     MatDestroy(&K_A);
 
@@ -150,23 +147,23 @@ int main(int argc, char** argv)
     MatDestroy(&phi_perm);
     PetscPrintf(PETSC_COMM_WORLD, "done\n");
 
-    // Sinkhorn
-    //double start_sinkhorn = MPI_Wtime();
-    //PetscPrintf(PETSC_COMM_WORLD, "Computing Sinkhorn... ");
-    //Mat W_A, W_B;
-    //Sinkhorn(phi, Pi, &W_A, &W_B);
-    //Mat W_A_tmp = SetNegativesToZero(W_A);
-    //MatDestroy(&W_A);
-    //W_A = W_A_tmp;
-    //PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_sinkhorn);
+    // Compute W_A and W_B with re-normalised Laplacian
+    double start_filter = MPI_Wtime();
+    PetscPrintf(PETSC_COMM_WORLD, "Computing W_A and W_B (re-normalised Laplacian)... ");
+    Mat W_A, W_B;
+    ComputeWAWB_RenormalisedLaplacian(phi, Pi, &W_A, &W_B);
+    Mat W_A_tmp = SetNegativesToZero(W_A);
+    MatDestroy(&W_A);
+    W_A = W_A_tmp;
+    PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_filter);
     MatDestroy(&phi);
     MatDestroy(&Pi);
 
     // Orthogonalise
     //Mat V, S;
     //EigendecompositionAndOrthogonalisation(W_A, W_B, &V, &S);
-    //MatDestroy(&W_A);
-    //MatDestroy(&W_B);
+    MatDestroy(&W_A);
+    MatDestroy(&W_B);
 
     // Permutation
 

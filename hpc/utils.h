@@ -16,3 +16,6 @@ Mat GetLastCols(Mat x, const unsigned int n);
 Mat GetFirstRows(Mat x, const unsigned int n);
 
 Mat SetNegativesToZero(Mat x);
+
+PetscScalar VecMean(Vec x);
+Mat MatCreateIdentity(const unsigned int n, const MatType format);
