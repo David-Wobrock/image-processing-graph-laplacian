@@ -140,11 +140,10 @@ int main(int argc, char** argv)
     MatDestroy(&K_B);
 
     // Display affinity = phi*Pi*phiT
-    const unsigned int display_x = 55;
-    const unsigned int display_y = 425;
-    PetscPrintf(PETSC_COMM_WORLD, "Displaying affinity matrix at %dx%d... ", display_x, display_y);
+    PetscPrintf(PETSC_COMM_WORLD, "Displaying affinity matrix... ");
     Mat phi_perm = Permutation(phi, sample_indices, sample_size);
-    ComputeAndSaveAffinityMatrixOfPixel(phi_perm, Pi, width, height, display_x, display_y);
+    ComputeAndSaveAffinityMatrixOfPixel(phi_perm, Pi, width, height, 55, 425);
+    ComputeAndSaveAffinityMatrixOfPixel(phi_perm, Pi, width, height, 5, 5);
     MatDestroy(&phi_perm);
     PetscPrintf(PETSC_COMM_WORLD, "done\n");
 
@@ -164,7 +163,7 @@ int main(int argc, char** argv)
     start_eps = MPI_Wtime();
     PetscPrintf(PETSC_COMM_WORLD, "Computing %d largest eigenvalues of filter matrix... ", p);
     Eigendecomposition(W_A, p, &phi_A, &Pi, &Pi_Inv, NULL); // A = phi*Pi*phi_T
-    MatView(Pi, PETSC_VIEWER_STDOUT_WORLD);
+    //MatView(Pi, PETSC_VIEWER_STDOUT_WORLD);
     PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_eps);
     MatDestroy(&W_A);
 
