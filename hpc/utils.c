@@ -470,6 +470,16 @@ png_bytep* OneColMat2pngbytes(Mat x, const unsigned int width, const unsigned in
     PetscMPIInt rank;
     MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
 
+    Vec values, local_values;
+    VecCreate(PETSC_COMM_WORLD, &values);
+    VecSetSizes(values, PETSC_DECIDE, width*height);
+    VecSetFromOptions(values);
+    MatGetColumnVector(x, values, 0);
+    VecScatter ctx;
+    VecScatterCreateToZero(values, &ctx, &local_values);
+    VecScatterBegin(ctx, values, local_values, INSERT_VALUES, SCATTER_FORWARD);
+    VecScatterEnd(ctx, values, local_values, INSERT_VALUES, SCATTER_FORWARD);
+
     // Allocate memory for image for proc 0
     png_bytep* img_bytes = NULL;
     if (rank == 0)
@@ -481,35 +491,19 @@ png_bytep* OneColMat2pngbytes(Mat x, const unsigned int width, const unsigned in
         }
 
         // Fill img_bytes with local data and then receive the next data
-        PetscInt istart, iend, x_pos, y_pos;
+        PetscInt x_pos, y_pos;
         PetscScalar val;
-        MatGetOwnershipRange(x, &istart, &iend);
-        for (PetscInt i = istart; i < iend; ++i)
+        for (PetscInt i = 0; i < (width*height); ++i)
         {
             x_pos = num2x(i, width);
             y_pos = num2y(i, width);
-            MatGetValues(x, 1, &i, 1, &ZERO, &val);
-            img_bytes[x_pos][y_pos] = val;
-        }
-        for (PetscInt i = iend; i < (width*height); ++i)
-        {
-            x_pos = num2x(i, width);
-            y_pos = num2y(i, width);
-            MPI_Recv(&val, 1, MPI_DOUBLE, MPI_ANY_SOURCE, i, PETSC_COMM_WORLD, MPI_STATUS_IGNORE); // TODO can be improved instead of point2point com
+            VecGetValues(local_values, 1, &i, &val);
             img_bytes[x_pos][y_pos] = val;
         }
     }
-    else // Other processes send stuff to rank 0
-    {
-        PetscInt istart, iend;
-        PetscScalar val;
-        MatGetOwnershipRange(x, &istart, &iend);
-        for (PetscInt i = istart; i < iend; ++i)
-        {
-            MatGetValues(x, 1, &i, 1, &ZERO, &val);
-            MPI_Send(&val, 1, MPI_DOUBLE, 0, i, PETSC_COMM_WORLD); // TODO can be improved instead of point2point com
-        }
-    }
+    VecScatterDestroy(&ctx);
+    VecDestroy(&local_values);
+    VecDestroy(&values);
 
     // Gather all data to process 0
     return img_bytes;
