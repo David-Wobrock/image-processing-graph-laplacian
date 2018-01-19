@@ -151,7 +151,7 @@ int main(int argc, char** argv)
     double start_filter = MPI_Wtime();
     PetscPrintf(PETSC_COMM_WORLD, "Computing W_A and W_B (re-normalised Laplacian)... ");
     Mat W_A, W_B;
-    ComputeWAWB_RenormalisedLaplacian(phi, Pi, &W_A, &W_B);
+    ComputeWAWB_RenormalisedLaplacian(phi, Pi, &W_A, &W_B, sample_size);
     Mat W_A_tmp = SetNegativesToZero(W_A);
     MatDestroy(&W_A);
     W_A = W_A_tmp;

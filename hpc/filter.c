@@ -2,12 +2,15 @@
 
 #include "utils.h"
 
-static Mat ComputeK(Mat phi, Mat Pi)
+/*
+Compute the first sample_size rows of K
+*/
+static Mat ComputeK(Mat phi, Mat Pi, const unsigned int sample_size)
 {
     PetscInt p;
     MatGetSize(phi, NULL, &p);
 
-    Mat phi_firstrows = GetFirstRows(phi, p);
+    Mat phi_firstrows = GetFirstRows(phi, sample_size);
     Mat left_part;
     MatMatMult(phi_firstrows, Pi, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &left_part);
     MatDestroy(&phi_firstrows);
@@ -28,22 +31,22 @@ Pass uninitialised W_A and W_B
 Re-normalised Laplacian: L=alpha*(D-K)
 Filter: W=I-L <=> W=I-alpha*(D-K) <=> W=I+alpha*(K-D)
 */
-void ComputeWAWB_RenormalisedLaplacian(Mat phi, Mat Pi, Mat* W_A, Mat* W_B)
+void ComputeWAWB_RenormalisedLaplacian(Mat phi, Mat Pi, Mat* W_A, Mat* W_B, const unsigned int sample_size)
 {
-    Mat K = ComputeK(phi, Pi);
-    PetscInt p, N;
-    MatGetSize(K, &p, &N);
+    Mat K = ComputeK(phi, Pi, sample_size);
+    PetscInt N;
+    MatGetSize(K, NULL, &N);
 
     Vec D;
     VecCreate(PETSC_COMM_WORLD, &D);
-    VecSetSizes(D, PETSC_DECIDE, p);
+    VecSetSizes(D, PETSC_DECIDE, sample_size);
     VecSetFromOptions(D);
     MatGetRowSum(K, D);
 
     // K-D
     Mat KminusD;
     MatCreate(PETSC_COMM_WORLD, &KminusD);
-    MatSetSizes(KminusD, PETSC_DECIDE, PETSC_DECIDE, p, N);
+    MatSetSizes(KminusD, PETSC_DECIDE, PETSC_DECIDE, sample_size, N);
     MatSetType(KminusD, MATMPIDENSE);
     MatSetFromOptions(KminusD);
     MatSetUp(KminusD);
@@ -77,12 +80,12 @@ void ComputeWAWB_RenormalisedLaplacian(Mat phi, Mat Pi, Mat* W_A, Mat* W_B)
     MatDestroy(&K);
 
     // Split W_A and W_B
-    Mat W_A_without_ident = GetFirstCols(KminusD, p);
-    *W_B = GetLastCols(KminusD, N-p);
+    Mat W_A_without_ident = GetFirstCols(KminusD, sample_size);
+    *W_B = GetLastCols(KminusD, N-sample_size);
     MatDestroy(&KminusD);
 
     // I + alpha*(K - D) (only affects W_A)
-    Mat ident = MatCreateIdentity(p, MATMPIDENSE);
+    Mat ident = MatCreateIdentity(sample_size, MATMPIDENSE);
     Mat matrices[2];
     matrices[0] = ident;
     matrices[1] = W_A_without_ident;
