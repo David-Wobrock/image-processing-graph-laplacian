@@ -126,7 +126,7 @@ int main(int argc, char** argv)
     const unsigned int p = 100; // num eigenpairs
     PetscPrintf(PETSC_COMM_WORLD, "Computing %d largest eigenvalues of affinity matrix... ", p);
     Mat phi_A, Pi, Pi_Inv;
-    Eigendecomposition(K_A, p, &phi_A, &Pi, &Pi_Inv, NULL); // A = phi*Pi*phi_T
+    Eigendecomposition(K_A, p, &phi_A, &Pi, &Pi_Inv); // A = phi*Pi*phi_T
     PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_eps);
     MatDestroy(&K_A);
 
@@ -162,7 +162,7 @@ int main(int argc, char** argv)
     // Eigendecomposition and Nystroem
     start_eps = MPI_Wtime();
     PetscPrintf(PETSC_COMM_WORLD, "Computing %d largest eigenvalues of filter matrix... ", p);
-    Eigendecomposition(W_A, p, &phi_A, &Pi, &Pi_Inv, NULL); // A = phi*Pi*phi_T
+    Eigendecomposition(W_A, p, &phi_A, &Pi, &Pi_Inv); // A = phi*Pi*phi_T
     //MatView(Pi, PETSC_VIEWER_STDOUT_WORLD);
     PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_eps);
     MatDestroy(&W_A);
