@@ -97,13 +97,14 @@ int main(int argc, char** argv)
     PetscMPIInt rank, size;
 
     InitProgram(argc, argv, &rank, &size);
+    PetscPrintf(PETSC_COMM_WORLD, "Running with %d processes\n", size);
     double start_time = MPI_Wtime();
     GetFilePath(filename);
 
     int width, height;
     png_bytep* img_bytes;
     ReadAndBcastImage(rank, filename, &img_bytes, &width, &height);
-    PetscPrintf(PETSC_COMM_WORLD, "Read image %s of size %dx%d\n", filename, width, height);
+    PetscPrintf(PETSC_COMM_WORLD, "Read image %s of size %dx%d => %d\n", filename, width, height, width*height);
 
     // Sampling (all compute the same locally)
     unsigned int sample_size = width*height*0.01; // 1%
