@@ -13,6 +13,7 @@ Mat OneColMat2Diag(Mat x);
 Mat pngbytes2OneColMat(const png_bytep* const img_bytes, const unsigned int width, const unsigned int height);
 png_bytep* OneColMat2pngbytes(Mat x, const unsigned int width, const unsigned int height);
 png_bytep* OneRowMat2pngbytes(Mat vec_mat, const unsigned int width, const unsigned int height, const int scale);
+Vec DiagMat2Vec(Mat x);
 
 Mat Permutation(Mat m, const unsigned int* const sample_indices, const unsigned int num_sample_indices);
 Mat GetFirstCols(Mat x, const unsigned int n);

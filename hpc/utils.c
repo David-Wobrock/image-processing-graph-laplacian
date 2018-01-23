@@ -309,42 +309,51 @@ Mat GetFirstRows(Mat x, const unsigned int n)
 
 Mat SetNegativesToZero(Mat x)
 {
-    PetscInt nb_cols;
-    MatGetSize(x, NULL, &nb_cols);
+    PetscInt nb_cols, nb_rows;
+    MatType type;
+    MatGetSize(x, &nb_rows, &nb_cols);
+    MatGetType(x, &type);
 
     Mat y;
-    MatDuplicate(x, MAT_DO_NOT_COPY_VALUES, &y);
+    MatCreate(PETSC_COMM_WORLD, &y);
+    MatSetSizes(y, PETSC_DECIDE, PETSC_DECIDE, nb_rows, nb_cols);
+    MatSetType(y, type);
+    MatSetFromOptions(y);
+    MatSetUp(y);
 
     // Fill
     PetscInt istart, iend;
     MatGetOwnershipRange(x, &istart, &iend);
-    PetscInt *row_indices, *col_indices;
-    row_indices = (PetscInt*) malloc(sizeof(PetscInt) * (iend-istart));
-    col_indices = (PetscInt*) malloc(sizeof(PetscInt) * nb_cols);
-    for (PetscInt i = 0; i < (iend-istart); ++i)
+    if (iend-istart > 0)
     {
-        row_indices[i] = i + istart;
-    }
-    for (PetscInt i = 0; i < nb_cols; ++i)
-    {
-        col_indices[i] = i;
-    }
-    PetscScalar* values = (PetscScalar*) malloc(sizeof(PetscScalar) * (iend-istart) * nb_cols);
-
-    MatGetValues(x, iend-istart, row_indices, nb_cols, col_indices, values);
-    // Set to 0 when negative
-    for (unsigned int i = 0; i < ((iend-istart) * nb_cols); ++i)
-    {
-        if (values[i] < 0.)
+        PetscInt *row_indices, *col_indices;
+        row_indices = (PetscInt*) malloc(sizeof(PetscInt) * (iend-istart));
+        col_indices = (PetscInt*) malloc(sizeof(PetscInt) * nb_cols);
+        for (PetscInt i = 0; i < (iend-istart); ++i)
         {
-            values[i] = 0.;
+            row_indices[i] = i + istart;
         }
-    }
-    MatSetValues(y, iend-istart, row_indices, nb_cols, col_indices, values, INSERT_VALUES);
+        for (PetscInt i = 0; i < nb_cols; ++i)
+        {
+            col_indices[i] = i;
+        }
+        PetscScalar* values = (PetscScalar*) malloc(sizeof(PetscScalar) * (iend-istart) * nb_cols);
 
-    free(values);
-    free(col_indices);
-    free(row_indices);
+        MatGetValues(x, iend-istart, row_indices, nb_cols, col_indices, values);
+        // Set to 0 when negative
+        for (unsigned int i = 0; i < ((iend-istart) * nb_cols); ++i)
+        {
+            if (values[i] < 0.)
+            {
+                values[i] = 0.;
+            }
+        }
+        MatSetValues(y, iend-istart, row_indices, nb_cols, col_indices, values, INSERT_VALUES);
+
+        free(values);
+        free(col_indices);
+        free(row_indices);
+    }
 
     MatAssemblyBegin(y, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(y, MAT_FINAL_ASSEMBLY);
@@ -507,4 +516,19 @@ png_bytep* OneColMat2pngbytes(Mat x, const unsigned int width, const unsigned in
 
     // Gather all data to process 0
     return img_bytes;
+}
+
+Vec DiagMat2Vec(Mat x)
+{
+    PetscInt size;
+    MatGetSize(x, &size, NULL);
+
+    Vec v;
+    VecCreate(PETSC_COMM_WORLD, &v);
+    VecSetSizes(v, PETSC_DECIDE, size);
+    VecSetFromOptions(v);
+
+    MatGetDiagonal(x, v);
+
+    return v;
 }

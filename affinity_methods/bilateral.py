@@ -27,6 +27,6 @@ def bilateral_affinity(y, sample_indices):
         spatial = np.exp(-(
             np.linalg.norm(sample_pos-all_coords, axis=1)**2)/(h_spatial**2))
         AB[i, :] = photometric * spatial
-    
+
     logger.info('Affinity function bilateral done in {0}s'.format(time.time() - start))
     return AB

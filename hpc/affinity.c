@@ -2,7 +2,6 @@
 
 #include <stdlib.h>
 #include <petscvec.h>
-#include <math.h>
 
 #include "utils.h"
 
@@ -11,14 +10,17 @@ static void ComputePhotometricDistance(Vec sample_pixels_value, const double sam
     VecCopy(sample_pixels_value, v);
     // Operation exp(-abs(pow((double) (sample_value - all), 2))/pow(h, 2));
     VecShift(v, -sample_value);
-    VecPow(v, 2);
     VecAbs(v);
+    VecPow(v, 2);
     VecScale(v, -(1./(h*h)));
     VecExp(v);
 }
 
-static void ComputeSpatialFilter(Vec sample_pixels_x, Vec sample_pixels_y, const unsigned int sample_x, const unsigned int sample_y, const double h_loc, Vec v)
+static void ComputeSpatialFilter(Vec sample_pixels_x, Vec sample_pixels_y, const unsigned int sample_x, const unsigned int sample_y, const double h, Vec v)
 {
+    PetscInt sample_size;
+    VecGetSize(sample_pixels_x, &sample_size);
+
     // Compute location part exp(-norm(x_i - x_j)^2 / h^2)
     Vec x_loc, y_loc;
     VecDuplicate(v, &x_loc);
@@ -30,8 +32,6 @@ static void ComputeSpatialFilter(Vec sample_pixels_x, Vec sample_pixels_y, const
     VecPow(x_loc, 2);
     VecShift(y_loc, -((PetscScalar) sample_y));
     VecPow(y_loc, 2);
-    PetscInt sample_size;
-    VecGetSize(x_loc, &sample_size);
     PetscInt* col_indices = (PetscInt*) malloc(sizeof(PetscInt) * sample_size);
     for (unsigned int i = 0; i < sample_size; ++i)
     {
@@ -43,7 +43,7 @@ static void ComputeSpatialFilter(Vec sample_pixels_x, Vec sample_pixels_y, const
     VecGetValues(y_loc, sample_size, col_indices, y_values);
     for (unsigned int i = 0; i < sample_size; ++i)
     {
-        x_values[i] = sqrt(x_values[i] + y_values[i]);
+        x_values[i] = x_values[i] + y_values[i];
     }
     VecSetValues(v, sample_size, col_indices, x_values, INSERT_VALUES);
     free(x_values);
@@ -52,7 +52,7 @@ static void ComputeSpatialFilter(Vec sample_pixels_x, Vec sample_pixels_y, const
     VecDestroy(&y_loc);
     VecDestroy(&x_loc);
 
-    VecScale(v, -(1./(h_loc*h_loc)));
+    VecScale(v, -(1./(h*h)));
     VecExp(v);
 }
 
@@ -86,7 +86,7 @@ static void ComputeBilateralFilter(Vec sample_pixels_x, Vec sample_pixels_y, Vec
     VecGetValues(y_loc, sample_size, col_indices, y_values);
     for (unsigned int i = 0; i < sample_size; ++i)
     {
-        x_values[i] = sqrt(x_values[i] + y_values[i]);
+        x_values[i] = x_values[i] + y_values[i];
     }
     VecSetValues(loc_part, sample_size, col_indices, x_values, INSERT_VALUES);
     free(x_values);
@@ -101,8 +101,8 @@ static void ComputeBilateralFilter(Vec sample_pixels_x, Vec sample_pixels_y, Vec
     // Compute value part exp(-(y_i - y_j)^2 / h^2)
     VecCopy(sample_pixels_value, val_part);
     VecShift(val_part, -sample_value);
-    VecPow(val_part, 2);
     VecAbs(val_part);
+    VecPow(val_part, 2);
     VecScale(val_part, -(1./(h_val*h_val)));
     VecExp(val_part);
 
@@ -114,8 +114,8 @@ static void ComputeBilateralFilter(Vec sample_pixels_x, Vec sample_pixels_y, Vec
 
 void ComputeDistance(Vec sample_pixels_x, Vec sample_pixels_y, Vec sample_pixels_value, const unsigned int sample_x, const unsigned int sample_y, const double sample_value, Vec v)
 {
-    const PetscScalar h_val = 10.;
-    const PetscScalar h_loc = 10.;
+    const PetscScalar h_val = 20.;
+    const PetscScalar h_loc = 40.;
     //ComputePhotometricDistance(sample_pixels_value, sample_value, h_val, v);
     //ComputeSpatialFilter(sample_pixels_x, sample_pixels_y, sample_x, sample_y, h_loc, v);
     ComputeBilateralFilter(sample_pixels_x, sample_pixels_y, sample_pixels_value, sample_x, sample_y, sample_value, h_loc, h_val, v);

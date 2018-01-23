@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <mpi.h>
+#include <petscviewer.h>
 
 #include "utils.h"
 #include "write_img.h"
@@ -50,9 +51,12 @@ static void ComputeAndSaveAffinityMatrixOfPixelNum(Mat phi, Mat Pi, const unsign
     MatDestroy(&phi_T);
     MatDestroy(&tmp);
 
-    // Rearrange vector into image (on one proc) and save
-    png_bytep* img_bytes = OneRowMat2pngbytes(affinity_img_on_vec, width, height, 255);
+    Mat non_zero_affinities = SetNegativesToZero(affinity_img_on_vec);
     MatDestroy(&affinity_img_on_vec);
+
+    // Rearrange vector into image (on one proc) and save
+    png_bytep* img_bytes = OneRowMat2pngbytes(non_zero_affinities, width, height, 255);
+    MatDestroy(&non_zero_affinities);
     if (rank == 0)
     {
         write_png(filename, img_bytes, width, height);
@@ -108,4 +112,21 @@ void ComputeAndSaveResult(const png_bytep* const img_bytes, Mat phi, Mat Pi, con
         }
         free(result_bytes);
     }
+}
+
+void WriteVec(Vec v, const char* const filename)
+{
+    PetscViewer viewer;
+    PetscViewerASCIIOpen(PETSC_COMM_WORLD, filename, &viewer);
+
+    VecView(v, viewer);
+
+    PetscViewerDestroy(&viewer);
+}
+
+void WriteDiagMat(Mat x, const char* const filename)
+{
+    Vec v = DiagMat2Vec(x);
+    WriteVec(v, filename);
+    VecDestroy(&v);
 }

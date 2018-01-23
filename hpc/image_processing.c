@@ -127,6 +127,7 @@ int main(int argc, char** argv)
     PetscPrintf(PETSC_COMM_WORLD, "Computing %d largest eigenvalues of affinity matrix... ", p);
     Mat phi_A, Pi, Pi_Inv;
     Eigendecomposition(K_A, p, &phi_A, &Pi, &Pi_Inv); // A = phi*Pi*phi_T
+    WriteDiagMat(Pi, "eigenvalues_affinity.txt");
     PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_eps);
     MatDestroy(&K_A);
 
@@ -163,7 +164,7 @@ int main(int argc, char** argv)
     start_eps = MPI_Wtime();
     PetscPrintf(PETSC_COMM_WORLD, "Computing %d largest eigenvalues of filter matrix... ", p);
     Eigendecomposition(W_A, p, &phi_A, &Pi, &Pi_Inv); // A = phi*Pi*phi_T
-    //MatView(Pi, PETSC_VIEWER_STDOUT_WORLD);
+    WriteDiagMat(Pi, "eigenvalues.txt");
     PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_eps);
     MatDestroy(&W_A);
 
@@ -177,9 +178,9 @@ int main(int argc, char** argv)
     MatDestroy(&K_B);
 
     // TODO necessary?
-    //Mat phi_orth = OrthogonaliseMat(phi);
-    //MatDestroy(&phi);
-    //phi = phi_orth;
+    Mat phi_orth = OrthogonaliseMat(phi);
+    MatDestroy(&phi);
+    phi = phi_orth;
 
     // Can display
     double start_output = MPI_Wtime();
