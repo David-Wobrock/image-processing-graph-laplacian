@@ -123,12 +123,12 @@ int main(int argc, char** argv)
     // Solve eigenvalue problem
     // Use SLEPc because we need greatest eigenelements
     double start_eps = MPI_Wtime();
-    //const unsigned int p = sample_size; // num eigenpairs
-    const unsigned int p = 100; // num eigenpairs
+    const unsigned int p = sample_size; // num eigenpairs
+    //const unsigned int p = 100; // num eigenpairs
     PetscPrintf(PETSC_COMM_WORLD, "Computing %d largest eigenvalues of affinity matrix... ", p);
     Mat phi_A, Pi, Pi_Inv;
     Eigendecomposition(K_A, p, &phi_A, &Pi, &Pi_Inv); // A = phi*Pi*phi_T
-    WriteDiagMat(Pi, "eigenvalues_affinity.txt");
+    WriteDiagMat(Pi, "results/eigenvalues_affinity.txt");
     PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_eps);
     MatDestroy(&K_A);
 
@@ -144,8 +144,9 @@ int main(int argc, char** argv)
     // Display affinity = phi*Pi*phiT
     PetscPrintf(PETSC_COMM_WORLD, "Displaying affinity matrix... ");
     Mat phi_perm = Permutation(phi, sample_indices, sample_size);
-    ComputeAndSaveAffinityMatrixOfPixel(phi_perm, Pi, width, height, 55, 425);
     ComputeAndSaveAffinityMatrixOfPixel(phi_perm, Pi, width, height, 5, 5);
+    ComputeAndSaveAffinityMatrixOfPixel(phi_perm, Pi, width, height, 50, 50);
+    ComputeAndSaveAffinityMatrixOfPixel(phi_perm, Pi, width, height, 99, 99);
     MatDestroy(&phi_perm);
     PetscPrintf(PETSC_COMM_WORLD, "done\n");
 
@@ -154,9 +155,6 @@ int main(int argc, char** argv)
     PetscPrintf(PETSC_COMM_WORLD, "Computing W_A and W_B (re-normalised Laplacian)... ");
     Mat W_A, W_B;
     ComputeWAWB_RenormalisedLaplacian(phi, Pi, &W_A, &W_B, sample_size);
-    Mat W_A_tmp = SetNegativesToZero(W_A);
-    MatDestroy(&W_A);
-    W_A = W_A_tmp;
     PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_filter);
     MatDestroy(&phi);
     MatDestroy(&Pi);
@@ -165,7 +163,7 @@ int main(int argc, char** argv)
     start_eps = MPI_Wtime();
     PetscPrintf(PETSC_COMM_WORLD, "Computing %d largest eigenvalues of filter matrix... ", p);
     Eigendecomposition(W_A, p, &phi_A, &Pi, &Pi_Inv); // A = phi*Pi*phi_T
-    WriteDiagMat(Pi, "eigenvalues.txt");
+    WriteDiagMat(Pi, "results/eigenvalues.txt");
     PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_eps);
     MatDestroy(&W_A);
 
@@ -176,17 +174,17 @@ int main(int argc, char** argv)
     PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_nystroem);
     MatDestroy(&phi_A);
     MatDestroy(&Pi_Inv);
-    MatDestroy(&K_B);
+    MatDestroy(&W_B);
 
     // TODO necessary?
-    Mat phi_orth = OrthogonaliseMat(phi);
+    phi_perm = Permutation(phi, sample_indices, sample_size);
+    Mat phi_orth = OrthonormaliseMat(phi_perm);
     MatDestroy(&phi);
     phi = phi_orth;
 
     // Can display
     double start_output = MPI_Wtime();
     PetscPrintf(PETSC_COMM_WORLD, "Permuting and computing output image... ");
-    phi_perm = Permutation(phi, sample_indices, sample_size);
     ComputeAndSaveResult(img_bytes, phi_perm, Pi, width, height);
     PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_output);
     MatDestroy(&phi_perm);

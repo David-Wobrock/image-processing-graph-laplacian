@@ -53,10 +53,11 @@ static void ComputeAndSaveAffinityMatrixOfPixelNum(Mat phi, Mat Pi, const unsign
 
     Mat non_zero_affinities = SetNegativesToZero(affinity_img_on_vec);
     MatDestroy(&affinity_img_on_vec);
+    affinity_img_on_vec = non_zero_affinities;
 
     // Rearrange vector into image (on one proc) and save
-    png_bytep* img_bytes = OneRowMat2pngbytes(non_zero_affinities, width, height, 255);
-    MatDestroy(&non_zero_affinities);
+    png_bytep* img_bytes = OneRowMat2pngbytes(affinity_img_on_vec, width, height, 255);
+    MatDestroy(&affinity_img_on_vec);
     if (rank == 0)
     {
         write_png(filename, img_bytes, width, height);
@@ -73,7 +74,7 @@ void ComputeAndSaveAffinityMatrixOfPixel(Mat phi, Mat Pi, const unsigned int wid
     char filename[100], x_name[20], y_name[20];
     sprintf(x_name, "%d", pixel_x);
     sprintf(y_name, "%d", pixel_y);
-    strcpy(filename, "affinity_");
+    strcpy(filename, "results/affinity_");
     strcat(filename, x_name);
     strcat(filename, "x");
     strcat(filename, y_name);
@@ -105,7 +106,7 @@ void ComputeAndSaveResult(const png_bytep* const img_bytes, Mat phi, Mat Pi, con
     MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
     if (rank == 0)
     {
-        write_png("result.png", result_bytes, width, height);
+        write_png("results/result.png", result_bytes, width, height);
         for (unsigned int i = 0; i < height; ++i)
         {
             free(result_bytes[i]);
