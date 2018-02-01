@@ -1,1 +1,1 @@
-PetscReal* InversePowerIteration(const Mat A, const unsigned int n, const unsigned int p);
+void InversePowerIteration(const Mat A, const unsigned int p, Mat* eigenvectors, Mat* eigenvalues);

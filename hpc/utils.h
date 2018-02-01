@@ -22,5 +22,8 @@ Mat GetFirstRows(Mat x, const unsigned int n);
 
 Mat SetNegativesToZero(Mat x);
 
+Vec MatRowSum(Mat A);
 PetscScalar VecMean(Vec x);
 Mat MatCreateIdentity(const unsigned int n, const MatType format);
+
+void CopyVecs(Vec* in, Vec* out, const unsigned int n);

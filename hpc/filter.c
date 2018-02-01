@@ -5,7 +5,7 @@
 /*
 Compute the first sample_size rows of K
 */
-static Mat ComputeK(Mat phi, Mat Pi, const unsigned int sample_size)
+Mat ComputeK(Mat phi, Mat Pi, const unsigned int sample_size)
 {
     PetscInt p;
     MatGetSize(phi, NULL, &p);
@@ -37,11 +37,7 @@ void ComputeWAWB_RenormalisedLaplacian(Mat phi, Mat Pi, Mat* W_A, Mat* W_B, cons
     PetscInt N;
     MatGetSize(K, NULL, &N);
 
-    Vec D;
-    VecCreate(PETSC_COMM_WORLD, &D);
-    VecSetSizes(D, PETSC_DECIDE, sample_size);
-    VecSetFromOptions(D);
-    MatGetRowSum(K, D);
+    Vec D = MatRowSum(K);
 
     // K-D
     Mat KminusD;

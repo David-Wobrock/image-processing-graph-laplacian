@@ -78,13 +78,24 @@ static PetscScalar ComputeResidualsNorm(Mat A, Vec* X_k_vec, const unsigned int 
     return norm;
 }
 
-PetscReal* InversePowerIteration(const Mat A, const unsigned int n, const unsigned int p)
+/*
+A is symmetric (and square)
+p the number of eigenvectors
+*/
+void InversePowerIteration(const Mat A, const unsigned int p, Mat* eigenvectors, Mat* eigenvalues)
 {
-    Vec* X_k = BuildRandomVectors(n, p);
-    PetscPrintf(PETSC_COMM_WORLD, "Initial norm %f\n", ComputeResidualsNorm(A, X_k, p));
+    PetscInt n;
+    MatGetSize(A, &n, NULL);
 
-    OrthonormaliseVecs(X_k, n, p);
-    PetscPrintf(PETSC_COMM_WORLD, "After orthonormalisation %f\n", ComputeResidualsNorm(A, X_k, p));
+    PetscScalar* norms = (PetscScalar*) malloc(sizeof(PetscScalar) * p);
+    Vec* X_k = BuildRandomVectors(n, p);
+    OrthonormaliseVecs(X_k, n, p, norms);
+
+    Vec* X_k_before_orth = (Vec*) malloc(sizeof(Vec) * p);
+    for (unsigned int i = 0; i < p; ++i)
+    {
+        VecDuplicate(X_k[i], X_k_before_orth+i);
+    }
 
     // Test if X_k, k=0 is orthonormal
     /*Mat X_k_mat, res;
@@ -100,7 +111,7 @@ PetscReal* InversePowerIteration(const Mat A, const unsigned int n, const unsign
         VecNorm(X_k[i], NORM_2, &norm);
         PetscPrintf(PETSC_COMM_WORLD, "Vec %d: %f\n", i, norm); // Should all be 1
     }*/
-    
+
     // Inverse subspace/power iteration
     PetscScalar epsilon = 0.01, r_norm;
 
@@ -108,11 +119,12 @@ PetscReal* InversePowerIteration(const Mat A, const unsigned int n, const unsign
     KSP ksp;
     KSPCreate(PETSC_COMM_WORLD, &ksp);
     KSPSetOperators(ksp, A, A);
-    //KSPSetType(ksp, KSPGMRES);
+    KSPSetType(ksp, KSPCG);
     //KSPSetType(ksp, KSPPREONLY);
 
-    //PC pc;
-    //KSPGetPC(ksp, &pc);
+    PC pc;
+    KSPGetPC(ksp, &pc);
+    PCSetType(pc, PCJACOBI);
     //PCSetType(pc, PCASM);
     //PCSetType(pc, PCLU);
     //PCFactorSetMatSolverPackage(pc, MATSOLVERELEMENTAL);
@@ -139,40 +151,87 @@ PetscReal* InversePowerIteration(const Mat A, const unsigned int n, const unsign
     //}
 
     PetscInt num_it;
-    PetscReal* norms_before_orth = (PetscReal*) malloc(sizeof(PetscReal) * p);
 
-    double start_inv_it = MPI_Wtime();
     r_norm = ComputeResidualsNorm(A, X_k, p);
     while (r_norm > epsilon)
     {
-        PetscPrintf(PETSC_COMM_WORLD, "Residuals norm %f\n", r_norm);
         for (unsigned int i = 0; i < p; ++i)
         {
             KSPSolve(ksp, X_k[i], X_k[i]);
             KSPGetIterationNumber(ksp, &num_it);
             KSPGetType(ksp, &ksptype);
             PetscPrintf(PETSC_COMM_WORLD, "col=%d, method=%s, iterations=%d\n", i, ksptype, num_it);
-            VecNorm(X_k[i], NORM_2, norms_before_orth+i);
         }
-        OrthonormaliseVecs(X_k, n, p);
+        // Save X_k before orthonormalisation
+        CopyVecs(X_k, X_k_before_orth, p);
+
+        PetscPrintf(PETSC_COMM_WORLD, "Old residual: %f\n", r_norm);
+        OrthonormaliseVecs(X_k, n, p, norms);
         r_norm = ComputeResidualsNorm(A, X_k, p);
+        PetscPrintf(PETSC_COMM_WORLD, "New residual: %f\n", r_norm);
+    }
+    KSPDestroy(&ksp);
+
+    // Compute eigenvalues
+    if (eigenvalues)
+    {
+        MatCreate(PETSC_COMM_WORLD, eigenvalues);
+        MatSetSizes(*eigenvalues, PETSC_DECIDE, PETSC_DECIDE, p, p);
+        MatSetType(*eigenvalues, MATMPIAIJ);
+        MatSetFromOptions(*eigenvalues);
+        MatSetUp(*eigenvalues);
+
+        PetscScalar value;
+        PetscInt istart, iend;
+        MatGetOwnershipRange(*eigenvalues, &istart, &iend);
+        for (PetscInt i = istart; i < iend; ++i)
+        {
+            value = 1.0 / norms[i];
+            MatSetValues(*eigenvalues, 1, &i, 1, &i, &value, INSERT_VALUES);
+        }
+
+        MatAssemblyBegin(*eigenvalues, MAT_FINAL_ASSEMBLY);
+        MatAssemblyEnd(*eigenvalues, MAT_FINAL_ASSEMBLY);
     }
 
-    PetscPrintf(PETSC_COMM_WORLD, "Inverse iteration took %f\n", MPI_Wtime() - start_inv_it);
-    KSPDestroy(&ksp);
+    // Compute eigenvectors
+    if (eigenvectors)
+    {
+        MatCreate(PETSC_COMM_WORLD, eigenvectors);
+        MatSetSizes(*eigenvectors, PETSC_DECIDE, PETSC_DECIDE, n, p);
+        MatSetType(*eigenvectors, MATMPIDENSE);
+        MatSetFromOptions(*eigenvectors);
+        MatSetUp(*eigenvectors);
+
+        PetscInt istart, iend;
+        VecGetOwnershipRange(X_k[0], &istart, &iend);
+        PetscInt* indices = (PetscInt*) malloc(sizeof(PetscInt) * (iend-istart));
+        for (unsigned int i = 0; i < (iend-istart); ++i)
+        {
+            indices[i] = i+istart;
+        }
+        PetscScalar* values = (PetscScalar*) malloc(sizeof(PetscScalar) * (iend-istart));
+        // Each process fills a part of the current vector (istart & iend should be the same for all vectors)
+        NormaliseVecs(X_k_before_orth, p, NULL);
+        for (PetscInt i = 0; i < p; ++i)
+        {
+            VecGetValues(X_k_before_orth[i], iend-istart, indices, values);
+            MatSetValues(*eigenvectors, iend-istart, indices, 1, &i, values, INSERT_VALUES);
+        }
+        free(indices);
+        free(values);
+
+        MatAssemblyBegin(*eigenvectors, MAT_FINAL_ASSEMBLY);
+        MatAssemblyEnd(*eigenvectors, MAT_FINAL_ASSEMBLY);
+    }
+
+    // Free
+    free(norms);
     for (unsigned int i = 0; i < p; ++i)
     {
         VecDestroy(&(X_k[i]));
+        VecDestroy(&(X_k_before_orth[i]));
     }
     free(X_k);
-
-    // Compute eigenvalues
-    PetscReal* eigenvalues = norms_before_orth; // Just naming, no reallocation
-    for (unsigned int i = 0; i < p; ++i)
-    {
-        eigenvalues[i] = 1./norms_before_orth[i];
-    }
-    PetscSortReal(p, eigenvalues);
-
-    return eigenvalues;
+    free(X_k_before_orth);
 }

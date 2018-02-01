@@ -9,7 +9,7 @@ Any of these 4 can be NULL if the output is not wanted.
 eigenvalues and eigenvalues_inv will be filled on the diagonal and be setted as MPIAIJ.
 eigenvectors will be of type MPIDENSE
 */
-void Eigendecomposition(Mat A, const unsigned int num_eigenpairs, Mat* eigenvectors, Mat* eigenvalues, Mat* eigenvalues_inv)
+static void Eigendecomposition(Mat A, const unsigned int num_eigenpairs, Mat* eigenvectors, Mat* eigenvalues, Mat* eigenvalues_inv, EPSWhich which)
 {
     EPS eps;
     EPSCreate(PETSC_COMM_WORLD, &eps);
@@ -17,7 +17,7 @@ void Eigendecomposition(Mat A, const unsigned int num_eigenpairs, Mat* eigenvect
     EPSSetProblemType(eps, EPS_HEP); // Symmetric
     EPSSetDimensions(eps, num_eigenpairs, PETSC_DEFAULT, PETSC_DEFAULT);
     EPSSetType(eps, EPSKRYLOVSCHUR);
-    EPSSetWhichEigenpairs(eps, EPS_LARGEST_MAGNITUDE);
+    EPSSetWhichEigenpairs(eps, which);
     EPSSetFromOptions(eps);
 
     EPSSolve(eps);
@@ -111,4 +111,14 @@ void Eigendecomposition(Mat A, const unsigned int num_eigenpairs, Mat* eigenvect
         MatAssemblyBegin(*eigenvalues_inv, MAT_FINAL_ASSEMBLY);
         MatAssemblyEnd(*eigenvalues_inv, MAT_FINAL_ASSEMBLY);
     }
+}
+
+void EigendecompositionLargest(Mat A, const unsigned int num_eigenpairs, Mat* eigenvectors, Mat* eigenvalues, Mat* eigenvalues_inv)
+{
+    Eigendecomposition(A, num_eigenpairs, eigenvectors, eigenvalues, eigenvalues_inv, EPS_LARGEST_MAGNITUDE);
+}
+
+void EigendecompositionSmallest(Mat A, const unsigned int num_eigenpairs, Mat* eigenvectors, Mat* eigenvalues, Mat* eigenvalues_inv)
+{
+    Eigendecomposition(A, num_eigenpairs, eigenvectors, eigenvalues, eigenvalues_inv, EPS_SMALLEST_MAGNITUDE);
 }

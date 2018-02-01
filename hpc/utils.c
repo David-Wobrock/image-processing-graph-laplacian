@@ -360,6 +360,20 @@ Mat SetNegativesToZero(Mat x)
     return y;
 }
 
+Vec MatRowSum(Mat A)
+{
+    PetscInt size;
+    MatGetSize(A, &size, NULL);
+
+    Vec D;
+    VecCreate(PETSC_COMM_WORLD, &D);
+    VecSetSizes(D, PETSC_DECIDE, size);
+    VecSetFromOptions(D);
+
+    MatGetRowSum(A, D);
+    return D;
+}
+
 PetscScalar VecMean(Vec x)
 {
     PetscScalar sum;
@@ -531,4 +545,12 @@ Vec DiagMat2Vec(Mat x)
     MatGetDiagonal(x, v);
 
     return v;
+}
+
+void CopyVecs(Vec* in, Vec* out, const unsigned int p)
+{
+    for (unsigned int i = 0; i < p; ++i)
+    {
+        VecCopy(in[i], out[i]);
+    }
 }

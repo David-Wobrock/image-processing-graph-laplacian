@@ -28,7 +28,7 @@ static void Projection(const Vec v, const Vec u, Vec* res)
     VecDestroy(&factor_vec);
 }
 
-static void OrthogonaliseAndNormaliseVecs(Vec* X, const unsigned int n, const unsigned int p, const int normalise)
+static void OrthogonaliseAndNormaliseVecs(Vec* X, const unsigned int n, const unsigned int p, PetscScalar* norms)
 {
     Vec sum_vec, proj_vec;
 
@@ -52,9 +52,9 @@ static void OrthogonaliseAndNormaliseVecs(Vec* X, const unsigned int n, const un
             VecAXPY(sum_vec, 1., proj_vec);
         }
         VecAXPBY(X[k], -1., 1, sum_vec);  // u_k = 1*v_k - sum
-        if (normalise)
+        if (norms)
         {
-            VecNormalize(X[k], NULL);
+            VecNormalize(X[k], norms+k);
         }
     }
 
@@ -65,12 +65,12 @@ static void OrthogonaliseAndNormaliseVecs(Vec* X, const unsigned int n, const un
 /*
 Orthonormalise a basis of p column vectors
 Uses Gram-Schimdt
-Input: X is already created and initialised, p the number of cols of X, n number of rows of X
-Output: Orthonormal X
+Input: X is already created and initialised, p the number of cols of X, n number of rows of X, an allocated norms vector of size p
+Output: Orthonormal X and norms filled with the norms of X before normalisation
 */
-void OrthonormaliseVecs(Vec* X, const unsigned int n, const unsigned int p)
+void OrthonormaliseVecs(Vec* X, const unsigned int n, const unsigned int p, PetscScalar* norms)
 {
-    OrthogonaliseAndNormaliseVecs(X, n, p, 1); // 1 => normalise
+    OrthogonaliseAndNormaliseVecs(X, n, p, norms); // with norms array => normalise
 }
 
 /*
@@ -84,7 +84,7 @@ Mat OrthonormaliseMat(Mat X)
     Mat Y;
 
     Vec* vecs = Mat2Vecs(X);
-    OrthonormaliseVecs(vecs, n, p);
+    OrthonormaliseVecs(vecs, n, p, NULL);
     Vecs2Mat(vecs, &Y, p);
 
     for (unsigned int i = 0; i < p; ++i)
@@ -103,7 +103,7 @@ Mat OrthogonaliseMat(Mat X)
     Mat Y;
 
     Vec* vecs = Mat2Vecs(X);
-    OrthogonaliseAndNormaliseVecs(vecs, n, p, 0); // 0 => do not normalise
+    OrthogonaliseAndNormaliseVecs(vecs, n, p, NULL); // NULL => do not normalise
     Vecs2Mat(vecs, &Y, p);
 
     for (unsigned int i = 0; i < p; ++i)
@@ -112,4 +112,17 @@ Mat OrthogonaliseMat(Mat X)
     }
     free(vecs);
     return Y;
+}
+
+void NormaliseVecs(Vec* X, const unsigned int p, PetscScalar* norms)
+{
+    PetscScalar* current_norm = NULL;
+    for (unsigned int i = 0; i < p; ++i)
+    {
+        if (norms)
+        {
+            current_norm = norms+i;
+        }
+        VecNormalize(X[i], current_norm);
+    }
 }

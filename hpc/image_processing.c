@@ -20,6 +20,8 @@
 #include "filter.h"
 #include "gram_schmidt.h"
 #include "display.h"
+#include "laplacian.h"
+#include "inverse_power_it.h"
 
 /*
 Initialize Slepc/Petsc/MPI
@@ -120,18 +122,33 @@ int main(int argc, char** argv)
     ComputeAffinityMatrices(&K_A, &K_B, img_bytes, width, height, sample_size, sample_indices);
     PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_affinity);
 
-    // Solve eigenvalue problem
-    // Use SLEPc because we need greatest eigenelements
-    double start_eps = MPI_Wtime();
-    const unsigned int p = sample_size; // num eigenpairs
-    //const unsigned int p = 100; // num eigenpairs
-    PetscPrintf(PETSC_COMM_WORLD, "Computing %d largest eigenvalues of affinity matrix... ", p);
-    Mat phi_A, Pi, Pi_Inv;
-    Eigendecomposition(K_A, p, &phi_A, &Pi, &Pi_Inv); // A = phi*Pi*phi_T
-    WriteDiagMat(Pi, "results/eigenvalues_affinity.txt");
-    PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_eps);
-    MatDestroy(&K_A);
+    // Compute Laplacian
+    double start_laplacian = MPI_Wtime();
+    PetscPrintf(PETSC_COMM_WORLD, "Computing Laplacian matrices... ");
+    Mat L_A;
+    ComputeLaplacianMatrix(&L_A, K_A);
+    PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_laplacian);
 
+    /*Mat eigvecs, eigvals;
+    EigendecompositionSmallest(L_A, sample_size, &eigvecs, &eigvals, NULL);
+    WriteDiagMat(eigvals, "results/eigenvalues_laplacian.txt");
+    MatView(eigvecs, PETSC_VIEWER_STDOUT_WORLD);
+    MatDestroy(&eigvecs);
+    MatDestroy(&eigvals);*/
+
+    double start_inv_it = MPI_Wtime();
+    Mat eigvals, eigvecs;
+    InversePowerIteration(L_A, sample_size-1, &eigvecs, &eigvals);
+    PetscPrintf(PETSC_COMM_WORLD, "Inverse subspace iteration took %f\n", MPI_Wtime() - start_inv_it);
+    WriteDiagMat(eigvals, "results/eigenvalues_laplacian.txt");
+    //MatView(eigvecs, PETSC_VIEWER_STDOUT_WORLD);
+
+    MatDestroy(&eigvals);
+    MatDestroy(&eigvecs);
+    MatDestroy(&L_A);
+    MatDestroy(&K_A);
+    MatDestroy(&K_B);
+/*
     // Nyström
     double start_nystroem = MPI_Wtime();
     PetscPrintf(PETSC_COMM_WORLD, "Computing Nyström approximation... ");
@@ -139,7 +156,7 @@ int main(int argc, char** argv)
     PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_nystroem);
     MatDestroy(&phi_A);
     MatDestroy(&Pi_Inv);
-    MatDestroy(&K_B);
+    //MatDestroy(&K_B);
 
     // Display affinity = phi*Pi*phiT
     PetscPrintf(PETSC_COMM_WORLD, "Displaying affinity matrix... ");
@@ -150,6 +167,23 @@ int main(int argc, char** argv)
     MatDestroy(&phi_perm);
     PetscPrintf(PETSC_COMM_WORLD, "done\n");
 
+    Mat W_A, W_B;
+    ComputeLALB(phi, Pi, sample_size, &W_A, &W_B);
+    MatView(W_A, PETSC_VIEWER_STDOUT_WORLD);
+    Mat eigvals;
+    EigendecompositionSmallest(W_A, p, NULL, &eigvals, NULL);
+    WriteDiagMat(Pi, "results/eigenvalues_laplacian.txt");
+    //PetscReal* eigvals = InversePowerIteration(W_A, sample_size, p);
+    //for (unsigned int i = 0; i < p; ++i)
+    //{
+    //    PetscPrintf(PETSC_COMM_WORLD, "%g\n", eigvals[i]);
+    //}
+    //free(eigvals);
+    MatDestroy(&W_A);
+    MatDestroy(&W_B);
+*/
+
+/*
     // Compute W_A and W_B with re-normalised Laplacian
     double start_filter = MPI_Wtime();
     PetscPrintf(PETSC_COMM_WORLD, "Computing W_A and W_B (re-normalised Laplacian)... ");
@@ -190,6 +224,7 @@ int main(int argc, char** argv)
     MatDestroy(&phi_perm);
     MatDestroy(&phi);
     MatDestroy(&Pi);
+*/
 
     // End
     PetscPrintf(PETSC_COMM_WORLD, "Total computation time: %fs\n", MPI_Wtime() - start_time);
