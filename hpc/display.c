@@ -131,3 +131,30 @@ void WriteDiagMat(Mat x, const char* const filename)
     WriteVec(v, filename);
     VecDestroy(&v);
 }
+
+png_bytep* ComputeResultFromLaplacian(const png_bytep* const img_bytes, Mat phi, Mat Pi, const unsigned int width, const unsigned int height)
+{
+    Mat z = pngbytes2OneColMat(img_bytes, width, height);
+
+    Mat phi_T, left, right, Lapl_y;
+
+    MatMatMult(phi, Pi, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &left);
+    MatTranspose(phi, MAT_INITIAL_MATRIX, &phi_T);
+    MatMatMult(phi_T, z, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &right);
+    MatDestroy(&phi_T);
+    MatMatMult(left, right, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &Lapl_y);
+    MatDestroy(&left);
+    MatDestroy(&right);
+
+    MatAXPY(z, -1.0, Lapl_y, SAME_NONZERO_PATTERN);
+    MatDestroy(&Lapl_y);
+    // TODO TODO  TODO some segfault is happening here
+    // One thread doesn't finish OneColMat2pngbytes (rank 0?)
+
+    printf("AAAAAAAAAa\n");
+    png_bytep* output = OneColMat2pngbytes(z, width, height);
+    printf("BBBBBBBBBa\n");
+    MatDestroy(&z);
+    printf("CCCCCCCCCa\n");
+    return output;
+}

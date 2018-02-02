@@ -22,6 +22,7 @@
 #include "display.h"
 #include "laplacian.h"
 #include "inverse_power_it.h"
+#include "write_img.h"
 
 /*
 Initialize Slepc/Petsc/MPI
@@ -110,7 +111,7 @@ int main(int argc, char** argv)
 
     // Sampling (all compute the same locally)
     unsigned int sample_size = width*height*0.01; // 1%
-    //unsigned int sample_size = 500;
+    //unsigned int sample_size = 200;
     unsigned int* sample_indices; // Must be sorted ASC
     Sampling(width, height, &sample_size, &sample_indices);
     PetscPrintf(PETSC_COMM_WORLD, "Sample size: %d\n", sample_size);
@@ -125,118 +126,61 @@ int main(int argc, char** argv)
     // Compute Laplacian
     double start_laplacian = MPI_Wtime();
     PetscPrintf(PETSC_COMM_WORLD, "Computing Laplacian matrices... ");
-    Mat L_A;
-    ComputeLaplacianMatrix(&L_A, K_A);
+    Mat L_A, L_B;
+    ComputeLaplacianMatrix(&L_A, &L_B, K_A, K_B);
     PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_laplacian);
-
-    /*Mat eigvecs, eigvals;
-    EigendecompositionSmallest(L_A, sample_size, &eigvecs, &eigvals, NULL);
-    WriteDiagMat(eigvals, "results/eigenvalues_laplacian.txt");
-    MatView(eigvecs, PETSC_VIEWER_STDOUT_WORLD);
-    MatDestroy(&eigvecs);
-    MatDestroy(&eigvals);*/
-
-    double start_inv_it = MPI_Wtime();
-    Mat eigvals, eigvecs;
-    InversePowerIteration(L_A, sample_size-1, &eigvecs, &eigvals);
-    PetscPrintf(PETSC_COMM_WORLD, "Inverse subspace iteration took %f\n", MPI_Wtime() - start_inv_it);
-    WriteDiagMat(eigvals, "results/eigenvalues_laplacian.txt");
-    //MatView(eigvecs, PETSC_VIEWER_STDOUT_WORLD);
-
-    MatDestroy(&eigvals);
-    MatDestroy(&eigvecs);
-    MatDestroy(&L_A);
     MatDestroy(&K_A);
     MatDestroy(&K_B);
-/*
+
+    // Eigendecomposition of L_A
+    double start_inv_it = MPI_Wtime();
+    //const unsigned int p = sample_size-1; // Number of eigenvalues
+    const unsigned int p = 50;
+    Mat eigvals, eigvecs_A;
+    InversePowerIteration(L_A, p, &eigvecs_A, &eigvals);
+    PetscPrintf(PETSC_COMM_WORLD, "Inverse subspace iteration took %f\n", MPI_Wtime() - start_inv_it);
+    WriteDiagMat(eigvals, "results/eigenvalues_laplacian.txt");
+    MatDestroy(&L_A);
+
+    Mat eigvals_inv = InverseDiagMat(eigvals);
+
     // Nyström
     double start_nystroem = MPI_Wtime();
     PetscPrintf(PETSC_COMM_WORLD, "Computing Nyström approximation... ");
-    Mat phi = Nystroem(K_B, phi_A, Pi_Inv, width*height, sample_size, p);
+    Mat eigvecs = Nystroem(L_B, eigvecs_A, eigvals_inv, width*height, sample_size, p);
     PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_nystroem);
-    MatDestroy(&phi_A);
-    MatDestroy(&Pi_Inv);
-    //MatDestroy(&K_B);
+    MatDestroy(&eigvecs_A);
+    MatDestroy(&eigvals_inv);
+    MatDestroy(&L_B);
 
-    // Display affinity = phi*Pi*phiT
-    PetscPrintf(PETSC_COMM_WORLD, "Displaying affinity matrix... ");
-    Mat phi_perm = Permutation(phi, sample_indices, sample_size);
-    ComputeAndSaveAffinityMatrixOfPixel(phi_perm, Pi, width, height, 5, 5);
-    ComputeAndSaveAffinityMatrixOfPixel(phi_perm, Pi, width, height, 50, 50);
-    ComputeAndSaveAffinityMatrixOfPixel(phi_perm, Pi, width, height, 99, 99);
-    MatDestroy(&phi_perm);
-    PetscPrintf(PETSC_COMM_WORLD, "done\n");
+    // Permutation
+    Mat eigvecs_perm = Permutation(eigvecs, sample_indices, sample_size);
+    MatDestroy(&eigvecs);
+    eigvecs = eigvecs_perm;
 
-    Mat W_A, W_B;
-    ComputeLALB(phi, Pi, sample_size, &W_A, &W_B);
-    MatView(W_A, PETSC_VIEWER_STDOUT_WORLD);
-    Mat eigvals;
-    EigendecompositionSmallest(W_A, p, NULL, &eigvals, NULL);
-    WriteDiagMat(Pi, "results/eigenvalues_laplacian.txt");
-    //PetscReal* eigvals = InversePowerIteration(W_A, sample_size, p);
-    //for (unsigned int i = 0; i < p; ++i)
-    //{
-    //    PetscPrintf(PETSC_COMM_WORLD, "%g\n", eigvals[i]);
-    //}
-    //free(eigvals);
-    MatDestroy(&W_A);
-    MatDestroy(&W_B);
-*/
+    // Compute output image z = y - (phi*Pi*phi.T*y)
+    double start_result = MPI_Wtime();
+    PetscPrintf(PETSC_COMM_WORLD, "Computing output image... ");
+    png_bytep* output_img = ComputeResultFromLaplacian(img_bytes, eigvecs, eigvals, width, height);
+    PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_result);
+    MatDestroy(&eigvecs);
+    MatDestroy(&eigvals);
 
-/*
-    // Compute W_A and W_B with re-normalised Laplacian
-    double start_filter = MPI_Wtime();
-    PetscPrintf(PETSC_COMM_WORLD, "Computing W_A and W_B (re-normalised Laplacian)... ");
-    Mat W_A, W_B;
-    ComputeWAWB_RenormalisedLaplacian(phi, Pi, &W_A, &W_B, sample_size);
-    PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_filter);
-    MatDestroy(&phi);
-    MatDestroy(&Pi);
-
-    // Eigendecomposition and Nystroem
-    start_eps = MPI_Wtime();
-    PetscPrintf(PETSC_COMM_WORLD, "Computing %d largest eigenvalues of filter matrix... ", p);
-    Eigendecomposition(W_A, p, &phi_A, &Pi, &Pi_Inv); // A = phi*Pi*phi_T
-    WriteDiagMat(Pi, "results/eigenvalues.txt");
-    PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_eps);
-    MatDestroy(&W_A);
-
-    // Nyström
-    start_nystroem = MPI_Wtime();
-    PetscPrintf(PETSC_COMM_WORLD, "Computing Nyström approximation... ");
-    phi = Nystroem(W_B, phi_A, Pi_Inv, width*height, sample_size, p);
-    PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_nystroem);
-    MatDestroy(&phi_A);
-    MatDestroy(&Pi_Inv);
-    MatDestroy(&W_B);
-
-    // TODO necessary?
-    phi_perm = Permutation(phi, sample_indices, sample_size);
-    Mat phi_orth = OrthonormaliseMat(phi_perm);
-    MatDestroy(&phi);
-    phi = phi_orth;
-
-    // Can display
-    double start_output = MPI_Wtime();
-    PetscPrintf(PETSC_COMM_WORLD, "Permuting and computing output image... ");
-    ComputeAndSaveResult(img_bytes, phi_perm, Pi, width, height);
-    PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_output);
-    MatDestroy(&phi_perm);
-    MatDestroy(&phi);
-    MatDestroy(&Pi);
-*/
+    // Write image
+    write_png("results/output.png", output_img, width, height);
 
     // End
     PetscPrintf(PETSC_COMM_WORLD, "Total computation time: %fs\n", MPI_Wtime() - start_time);
 
     // Clean up
     free(sample_indices);
-
     for (unsigned int i = 0; i < height; ++i)
     {
         free(img_bytes[i]);
+        free(output_img[i]);
     }
     free(img_bytes);
+    free(output_img);
 
     SlepcFinalize();
 

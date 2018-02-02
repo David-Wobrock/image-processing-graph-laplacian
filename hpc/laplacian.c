@@ -3,38 +3,43 @@
 #include <petscvec.h>
 #include "utils.h"
 
-void ComputeLaplacianMatrix(Mat* L_A, Mat K_A)
+/*
+Lapl = alpha * (D-K)
+ D_A = rowSum([K_A K_B])
+ alpha = 1./ mean(D)
+So,
+ Lapl_A = alpha * (D_A - K_A)
+ Lapl_B = -alpha*K_B
+*/
+void ComputeLaplacianMatrix(Mat* L_A, Mat* L_B, Mat K_A, Mat K_B)
 {
     PetscInt p;
     MatGetSize(K_A, &p, NULL);
 
-    // D^{-1/2}
-    Vec D_vec;
+    // D_A
+    Vec D_vec, D_vecB;
     D_vec = MatRowSum(K_A);
-    VecSqrtAbs(D_vec);
-    VecPow(D_vec, -1);
-    Mat D_diag;
-    MatDuplicate(K_A, MAT_DO_NOT_COPY_VALUES, &D_diag);
-    MatZeroEntries(D_diag);
-    MatDiagonalSet(D_diag, D_vec, INSERT_VALUES);
+    D_vecB = MatRowSum(K_B);
+    VecAXPY(D_vec, 1.0, D_vecB);
+    VecDestroy(&D_vecB);
+
+    Mat D_A;
+    MatDuplicate(K_A, MAT_DO_NOT_COPY_VALUES, &D_A);
+    MatZeroEntries(D_A);
+    MatDiagonalSet(D_A, D_vec, INSERT_VALUES);
+
+    // alpha
+    PetscScalar alpha = 1.0 / VecMean(D_vec);
     VecDestroy(&D_vec);
 
     // Compute L_A
-    Mat Id = MatCreateIdentity(p, MATMPIDENSE);
-    Mat right_part, tmp;
-    MatMatMult(D_diag, K_A, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &tmp);
-    MatMatMult(tmp, D_diag, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &right_part);
-    MatDestroy(&tmp);
-    MatDestroy(&D_diag);
+    MatDuplicate(K_A, MAT_COPY_VALUES, L_A);
+    MatAYPX(*L_A, -1.0, D_A, SAME_NONZERO_PATTERN);
+    MatScale(*L_A, alpha);
 
-    MatScale(right_part, -1.0);
+    // Compute L_B
+    MatDuplicate(K_B, MAT_COPY_VALUES, L_B);
+    MatScale(*L_B, -alpha);
 
-    Mat matrices[2];
-    matrices[0] = Id;
-    matrices[1] = right_part;
-    MatCreateComposite(PETSC_COMM_WORLD, 2, matrices, L_A);
-    MatCompositeMerge(*L_A);
-
-    MatDestroy(&right_part);
-    MatDestroy(&Id);
+    MatDestroy(&D_A);
 }

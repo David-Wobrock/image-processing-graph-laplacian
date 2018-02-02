@@ -378,7 +378,7 @@ PetscScalar VecMean(Vec x)
 {
     PetscScalar sum;
     // Sum
-    VecSum(x, &sum);
+    VecSum(x, &sum);  // Collective
 
     // Divide
     PetscInt size;
@@ -553,4 +553,97 @@ void CopyVecs(Vec* in, Vec* out, const unsigned int p)
     {
         VecCopy(in[i], out[i]);
     }
+}
+
+Mat InverseDiagMat(Mat x)
+{
+    PetscInt n;
+    MatGetSize(x, &n, NULL);
+
+    Mat y;
+    MatCreate(PETSC_COMM_WORLD, &y);
+    MatSetSizes(y, PETSC_DECIDE, PETSC_DECIDE, n, n);
+    MatSetType(y, MATMPIDENSE);
+    MatSetFromOptions(y);
+    MatSetUp(y);
+    MatZeroEntries(y);
+
+    // Each process fills a part of y
+    PetscInt istart, iend;
+    PetscScalar val;
+    MatGetOwnershipRange(x, &istart, &iend);
+    for (PetscInt i = istart; i < iend; ++i)
+    {
+        MatGetValues(x, 1, &i, 1, &i, &val);
+        MatSetValue(y, i, i, 1./val, INSERT_VALUES);
+    }
+
+    MatAssemblyBegin(y, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(y, MAT_FINAL_ASSEMBLY);
+
+    return y;
+}
+
+Vec pngbytes2Vec(const png_bytep* const img_bytes, const unsigned int width, const unsigned int height)
+{
+    const unsigned int size = width*height;
+
+    Vec x;
+    VecCreate(PETSC_COMM_WORLD, &x);
+    VecSetSizes(x, PETSC_DECIDE, size);
+    VecSetFromOptions(x);
+
+    // Each process fills a part of vector
+    PetscInt istart, iend;
+    PetscInt x_pos, y_pos;
+    VecGetOwnershipRange(x, &istart, &iend);
+    for (PetscInt i = istart; i < iend; ++i)
+    {
+        x_pos = num2x(istart, width);
+        y_pos = num2y(istart, width);
+        VecSetValue(x, i, img_bytes[x_pos][y_pos], INSERT_VALUES);
+    }
+
+    VecAssemblyBegin(x);
+    VecAssemblyEnd(x);
+    return x;
+}
+
+png_bytep* Vec2pngbytes(Vec x, const unsigned int width, const unsigned int height)
+{
+    PetscMPIInt rank;
+    MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+
+    Vec local_values;
+    VecScatter ctx;
+    VecScatterCreateToZero(x, &ctx, &local_values);
+    VecScatterBegin(ctx, x, local_values, INSERT_VALUES, SCATTER_FORWARD);
+    VecScatterEnd(ctx, x, local_values, INSERT_VALUES, SCATTER_FORWARD);
+
+    // Allocate memory for image for proc 0
+    png_bytep* img_bytes = NULL;
+    if (rank == 0)
+    {
+        img_bytes = (png_bytep*) malloc(sizeof(png_bytep) * height);
+        for (unsigned int i = 0; i < height; ++i)
+        {
+            img_bytes[i] = (png_bytep) malloc(sizeof(png_byte) * width);
+        }
+
+        // Fill img_bytes with local data and then receive the next data
+        PetscInt x_pos, y_pos;
+        PetscScalar val;
+        for (PetscInt i = 0; i < (width*height); ++i)
+        {
+            x_pos = num2x(i, width);
+            y_pos = num2y(i, width);
+            VecGetValues(local_values, 1, &i, &val);
+            img_bytes[x_pos][y_pos] = val;
+        }
+    }
+    VecScatterDestroy(&ctx);
+    VecDestroy(&local_values);
+
+    // Gather all data to process 0
+    return img_bytes;
 }
