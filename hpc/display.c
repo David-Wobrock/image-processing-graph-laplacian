@@ -148,13 +148,12 @@ png_bytep* ComputeResultFromLaplacian(const png_bytep* const img_bytes, Mat phi,
 
     MatAXPY(z, -1.0, Lapl_y, SAME_NONZERO_PATTERN);
     MatDestroy(&Lapl_y);
-    // TODO TODO  TODO some segfault is happening here
-    // One thread doesn't finish OneColMat2pngbytes (rank 0?)
 
-    printf("AAAAAAAAAa\n");
-    png_bytep* output = OneColMat2pngbytes(z, width, height);
-    printf("BBBBBBBBBa\n");
+    Mat z_tmp = AboveXSetY(z, 255, 255);
     MatDestroy(&z);
-    printf("CCCCCCCCCa\n");
+    z = z_tmp;
+
+    png_bytep* output = OneColMat2pngbytes(z, width, height);
+    MatDestroy(&z);
     return output;
 }

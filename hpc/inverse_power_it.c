@@ -113,44 +113,34 @@ void InversePowerIteration(const Mat A, const unsigned int p, Mat* eigenvectors,
     }*/
 
     // Inverse subspace/power iteration
-    PetscScalar epsilon = 0.01, r_norm;
+    PetscScalar epsilon = 0.1, r_norm;
 
-    KSPType ksptype;
     KSP ksp;
     KSPCreate(PETSC_COMM_WORLD, &ksp);
     KSPSetOperators(ksp, A, A);
-    KSPSetType(ksp, KSPCG);
+    //KSPSetType(ksp, KSPCG);
+    KSPSetType(ksp, KSPGMRES);
     //KSPSetType(ksp, KSPPREONLY);
 
     PC pc;
     KSPGetPC(ksp, &pc);
-    PCSetType(pc, PCJACOBI);
-    //PCSetType(pc, PCASM);
-    //PCSetType(pc, PCLU);
-    //PCFactorSetMatSolverPackage(pc, MATSOLVERELEMENTAL);
+    PCSetType(pc, PCASM);
 
-    //PCASMSetTotalSubdomains(pc, size*2, NULL, NULL);
-    //PCASMSetType(pc, PC_ASM_RESTRICT);
-    //PCASMSetOverlap(pc, 0);
+    PCASMSetLocalSubdomains(pc, 2, NULL, NULL);  // Number of subdomains per proc
+    PCASMSetType(pc, PC_ASM_BASIC);
+    PCASMSetOverlap(pc, 0); // Overlap
 
     KSPSetFromOptions(ksp);
     KSPSetUp(ksp);
 
     // Set subsolvers
-    //KSP *subksp;
-    //PC subpc;
-    //PetscInt num_local;
-    //PCASMGetSubKSP(pc, &num_local, NULL, &subksp);
-    //for (unsigned int i = 0; i < num_local; ++i)
-    //{
-    //    KSPSetType(subksp[i], KSPGMRES);
-    //    // TODO evaluate number of iterations per domain
-    // //   KSPSetType(subksp[i], KSPPREONLY);
-    // //   KSPGetPC(subksp[i], &subpc);
-    // //   PCSetType(subpc, PCLU);
-    //}
-
-    PetscInt num_it;
+    KSP *subksp;
+    PetscInt num_local;
+    PCASMGetSubKSP(pc, &num_local, NULL, &subksp);
+    for (unsigned int i = 0; i < num_local; ++i)
+    {
+        KSPSetType(subksp[i], KSPGMRES);
+    }
 
     r_norm = ComputeResidualsNorm(A, X_k, p);
     while (r_norm > epsilon)
@@ -158,14 +148,10 @@ void InversePowerIteration(const Mat A, const unsigned int p, Mat* eigenvectors,
         for (unsigned int i = 0; i < p; ++i)
         {
             KSPSolve(ksp, X_k[i], X_k[i]);
-            KSPGetIterationNumber(ksp, &num_it);
-            KSPGetType(ksp, &ksptype);
-            PetscPrintf(PETSC_COMM_WORLD, "col=%d, method=%s, iterations=%d\n", i, ksptype, num_it);
         }
         // Save X_k before orthonormalisation
         CopyVecs(X_k, X_k_before_orth, p);
 
-        PetscPrintf(PETSC_COMM_WORLD, "Old residual: %f\n", r_norm);
         OrthonormaliseVecs(X_k, n, p, norms);
         r_norm = ComputeResidualsNorm(A, X_k, p);
         PetscPrintf(PETSC_COMM_WORLD, "New residual: %f\n", r_norm);

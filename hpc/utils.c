@@ -647,3 +647,56 @@ png_bytep* Vec2pngbytes(Vec x, const unsigned int width, const unsigned int heig
     // Gather all data to process 0
     return img_bytes;
 }
+
+Mat AboveXSetY(Mat x, PetscScalar X, PetscScalar Y)
+{
+    PetscInt nb_cols, nb_rows;
+    MatType type;
+    MatGetSize(x, &nb_rows, &nb_cols);
+    MatGetType(x, &type);
+
+    Mat y;
+    MatCreate(PETSC_COMM_WORLD, &y);
+    MatSetSizes(y, PETSC_DECIDE, PETSC_DECIDE, nb_rows, nb_cols);
+    MatSetType(y, type);
+    MatSetFromOptions(y);
+    MatSetUp(y);
+
+    // Fill
+    PetscInt istart, iend;
+    MatGetOwnershipRange(x, &istart, &iend);
+    if (iend-istart > 0)
+    {
+        PetscInt *row_indices, *col_indices;
+        row_indices = (PetscInt*) malloc(sizeof(PetscInt) * (iend-istart));
+        col_indices = (PetscInt*) malloc(sizeof(PetscInt) * nb_cols);
+        for (PetscInt i = 0; i < (iend-istart); ++i)
+        {
+            row_indices[i] = i + istart;
+        }
+        for (PetscInt i = 0; i < nb_cols; ++i)
+        {
+            col_indices[i] = i;
+        }
+        PetscScalar* values = (PetscScalar*) malloc(sizeof(PetscScalar) * (iend-istart) * nb_cols);
+
+        MatGetValues(x, iend-istart, row_indices, nb_cols, col_indices, values);
+        // Set to 0 when negative
+        for (unsigned int i = 0; i < ((iend-istart) * nb_cols); ++i)
+        {
+            if (values[i] > X)
+            {
+                values[i] = Y;
+            }
+        }
+        MatSetValues(y, iend-istart, row_indices, nb_cols, col_indices, values, INSERT_VALUES);
+
+        free(values);
+        free(col_indices);
+        free(row_indices);
+    }
+
+    MatAssemblyBegin(y, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(y, MAT_FINAL_ASSEMBLY);
+    return y;
+}

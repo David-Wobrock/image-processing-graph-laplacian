@@ -135,10 +135,10 @@ int main(int argc, char** argv)
     // Eigendecomposition of L_A
     double start_inv_it = MPI_Wtime();
     //const unsigned int p = sample_size-1; // Number of eigenvalues
-    const unsigned int p = 50;
+    const unsigned int p = 100;
     Mat eigvals, eigvecs_A;
     InversePowerIteration(L_A, p, &eigvecs_A, &eigvals);
-    PetscPrintf(PETSC_COMM_WORLD, "Inverse subspace iteration took %f\n", MPI_Wtime() - start_inv_it);
+    PetscPrintf(PETSC_COMM_WORLD, "Inverse subspace iteration took %fs\n", MPI_Wtime() - start_inv_it);
     WriteDiagMat(eigvals, "results/eigenvalues_laplacian.txt");
     MatDestroy(&L_A);
 
@@ -167,7 +167,10 @@ int main(int argc, char** argv)
     MatDestroy(&eigvals);
 
     // Write image
-    write_png("results/output.png", output_img, width, height);
+    if (rank == 0)
+    {
+        write_png("results/output.png", output_img, width, height);
+    }
 
     // End
     PetscPrintf(PETSC_COMM_WORLD, "Total computation time: %fs\n", MPI_Wtime() - start_time);
@@ -177,10 +180,17 @@ int main(int argc, char** argv)
     for (unsigned int i = 0; i < height; ++i)
     {
         free(img_bytes[i]);
-        free(output_img[i]);
     }
     free(img_bytes);
-    free(output_img);
+
+    if (rank == 0)
+    {
+        for (unsigned int i = 0; i < height; ++i)
+        {
+            free(output_img[i]);
+        }
+        free(output_img);
+    }
 
     SlepcFinalize();
 

@@ -31,3 +31,5 @@ Mat InverseDiagMat(Mat x);
 
 Vec pngbytes2Vec(const png_bytep* const img_bytes, const unsigned int width, const unsigned int height);
 png_bytep* Vec2pngbytes(Vec x, const unsigned int width, const unsigned int height);
+
+Mat AboveXSetY(Mat x, PetscScalar X, PetscScalar Y);
