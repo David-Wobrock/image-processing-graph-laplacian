@@ -88,6 +88,8 @@ void InversePowerIteration(const Mat A, const unsigned int p, Mat* eigenvectors,
     MatGetSize(A, &n, NULL);
 
     PetscScalar* norms = (PetscScalar*) malloc(sizeof(PetscScalar) * p);
+
+    // Build X_0, initial random vector
     Vec* X_k = BuildRandomVectors(n, p);
     OrthonormaliseVecs(X_k, n, p, norms);
 
@@ -118,9 +120,7 @@ void InversePowerIteration(const Mat A, const unsigned int p, Mat* eigenvectors,
     KSP ksp;
     KSPCreate(PETSC_COMM_WORLD, &ksp);
     KSPSetOperators(ksp, A, A);
-    //KSPSetType(ksp, KSPCG);
     KSPSetType(ksp, KSPGMRES);
-    //KSPSetType(ksp, KSPPREONLY);
 
     PC pc;
     KSPGetPC(ksp, &pc);
