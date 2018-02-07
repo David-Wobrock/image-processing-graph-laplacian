@@ -109,18 +109,24 @@ int main(int argc, char** argv)
     ReadAndBcastImage(rank, filename, &img_bytes, &width, &height);
     PetscPrintf(PETSC_COMM_WORLD, "Read image %s of size %dx%d => %d\n", filename, width, height, width*height);
 
+    unsigned int p; // Sample size
+    unsigned int m; // Number of eigenvalues
+    // * Define parameters
+    p = width*height*0.01; // 1%
+    //p = width*height*0.005; // 0.5%
+    m = p-1;
+    //m = 99;
+
     // Sampling (all compute the same locally)
-    unsigned int sample_size = width*height*0.01; // 1%
-    //unsigned int sample_size = 200;
     unsigned int* sample_indices; // Must be sorted ASC
-    Sampling(width, height, &sample_size, &sample_indices);
-    PetscPrintf(PETSC_COMM_WORLD, "Sample size: %d\n", sample_size);
+    Sampling(width, height, &p, &sample_indices);
+    PetscPrintf(PETSC_COMM_WORLD, "Sample size: %d\n", p);
 
     // Compute affinity matrix
     double start_affinity = MPI_Wtime();
     PetscPrintf(PETSC_COMM_WORLD, "Computing affinity matrices... ");
     Mat K_A, K_B;
-    ComputeAffinityMatrices(&K_A, &K_B, img_bytes, width, height, sample_size, sample_indices);
+    ComputeAffinityMatrices(&K_A, &K_B, img_bytes, width, height, p, sample_indices);
     PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_affinity);
 
     // Compute Laplacian
@@ -134,11 +140,11 @@ int main(int argc, char** argv)
 
     // Eigendecomposition of L_A
     double start_inv_it = MPI_Wtime();
-    //const unsigned int p = sample_size-1; // Number of eigenvalues
-    const unsigned int p = 100;
     Mat eigvals, eigvecs_A;
-    InversePowerIteration(L_A, p, &eigvecs_A, &eigvals);
-    PetscPrintf(PETSC_COMM_WORLD, "Inverse subspace iteration took %fs\n", MPI_Wtime() - start_inv_it);
+    PetscPrintf(PETSC_COMM_WORLD, "Computing %d smallest eigenvalues... ", m);
+    InversePowerIteration(L_A, m, &eigvecs_A, &eigvals);
+    //EigendecompositionSmallest(L_A, m, &eigvecs_A, &eigvals, NULL);
+    PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_inv_it);
     WriteDiagMat(eigvals, "results/eigenvalues_laplacian.txt");
     MatDestroy(&L_A);
 
@@ -147,14 +153,14 @@ int main(int argc, char** argv)
     // Nyström
     double start_nystroem = MPI_Wtime();
     PetscPrintf(PETSC_COMM_WORLD, "Computing Nyström approximation... ");
-    Mat eigvecs = Nystroem(L_B, eigvecs_A, eigvals_inv, width*height, sample_size, p);
+    Mat eigvecs = Nystroem(L_B, eigvecs_A, eigvals_inv, width*height, p, m);
     PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_nystroem);
     MatDestroy(&eigvecs_A);
     MatDestroy(&eigvals_inv);
     MatDestroy(&L_B);
 
     // Permutation
-    Mat eigvecs_perm = Permutation(eigvecs, sample_indices, sample_size);
+    Mat eigvecs_perm = Permutation(eigvecs, sample_indices, p);
     MatDestroy(&eigvecs);
     eigvecs = eigvecs_perm;
 
