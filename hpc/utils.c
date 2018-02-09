@@ -2,6 +2,7 @@
 
 #include <mpi.h>
 #include <stdlib.h>
+#include <math.h>
 
 #define min(a, b) (a <= b ? a : b)
 
@@ -699,4 +700,30 @@ Mat AboveXSetY(Mat x, PetscScalar X, PetscScalar Y)
     MatAssemblyBegin(y, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(y, MAT_FINAL_ASSEMBLY);
     return y;
+}
+
+Mat MatPow(Mat A, PetscScalar x)
+{
+    PetscInt num_col;
+    MatGetSize(A, NULL, &num_col);
+
+    Mat B;
+    MatDuplicate(A, MAT_DO_NOT_COPY_VALUES, &B);
+
+    PetscScalar value;
+    PetscInt istart, iend;
+    MatGetOwnershipRange(A, &istart, &iend);
+    for (PetscInt i = istart; i < iend; ++i)
+    {
+        for (PetscInt j = 0; j < num_col; ++j)
+        {
+            MatGetValues(A, 1, &i, 1, &j, &value);
+            pow(value, x);
+            MatSetValue(B, i, j, value, INSERT_VALUES);
+        }
+    }
+
+    MatAssemblyBegin(B, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(B, MAT_FINAL_ASSEMBLY);
+    return B;
 }

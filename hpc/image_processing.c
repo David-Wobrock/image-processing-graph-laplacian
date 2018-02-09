@@ -49,11 +49,26 @@ static PetscErrorCode GetFilePath(char* const filename)
     PetscBool found_filename;
 
     ierr = PetscOptionsGetString(NULL, NULL, "-f", filename, PETSC_MAX_PATH_LEN, &found_filename); CHKERRQ(ierr);
-    if (!found_filename) {
-        fprintf(stderr, "No filename found (option -f)\n");
+    if (!found_filename)
+    {
+        PetscFPrintf(PETSC_COMM_WORLD, stderr, "No filename found (option -f)\n");
         exit(1);
     }
     return ierr;
+}
+
+static PetscInt GetNumberEigenvalues(const unsigned int sample_size)
+{
+    PetscInt num_eigvals;
+    PetscBool found;
+
+    PetscOptionsGetInt(NULL, NULL, "-num_eigvals", &num_eigvals, &found);
+    if (!found || num_eigvals < 0 || num_eigvals >= sample_size)
+    {
+        num_eigvals = sample_size-1;
+        PetscFPrintf(PETSC_COMM_WORLD, stderr, "No or invalid number of eigenvalues found (option -num_eigvals), so using %d\n", num_eigvals);
+    }
+    return num_eigvals;
 }
 
 /*
@@ -109,13 +124,11 @@ int main(int argc, char** argv)
     ReadAndBcastImage(rank, filename, &img_bytes, &width, &height);
     PetscPrintf(PETSC_COMM_WORLD, "Read image %s of size %dx%d => %d\n", filename, width, height, width*height);
 
-    unsigned int p; // Sample size
-    unsigned int m; // Number of eigenvalues
     // * Define parameters
+    unsigned int p; // Sample size
     p = width*height*0.01; // 1%
     //p = width*height*0.005; // 0.5%
-    m = p-1;
-    //m = 99;
+    PetscInt m = GetNumberEigenvalues(p); // Number of eigenvalues
 
     // Sampling (all compute the same locally)
     unsigned int* sample_indices; // Must be sorted ASC
@@ -159,18 +172,22 @@ int main(int argc, char** argv)
     MatDestroy(&eigvals_inv);
     MatDestroy(&L_B);
 
-    // Permutation
+    // Permutation of eigenvectors
     Mat eigvecs_perm = Permutation(eigvecs, sample_indices, p);
     MatDestroy(&eigvecs);
     eigvecs = eigvecs_perm;
 
+    // Apply some function to the eigenvalues
+    Mat f_eigvals = MatPow(eigvals, 2);
+    MatDestroy(&eigvals);
+
     // Compute output image z = y - (phi*Pi*phi.T*y)
     double start_result = MPI_Wtime();
     PetscPrintf(PETSC_COMM_WORLD, "Computing output image... ");
-    png_bytep* output_img = ComputeResultFromLaplacian(img_bytes, eigvecs, eigvals, width, height);
+    png_bytep* output_img = ComputeResultFromLaplacian(img_bytes, eigvecs, f_eigvals, width, height);
     PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_result);
     MatDestroy(&eigvecs);
-    MatDestroy(&eigvals);
+    MatDestroy(&f_eigvals);
 
     // Write image
     if (rank == 0)

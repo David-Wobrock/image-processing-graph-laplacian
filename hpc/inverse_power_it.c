@@ -127,7 +127,7 @@ void InversePowerIteration(const Mat A, const unsigned int p, Mat* eigenvectors,
     PCSetType(pc, PCASM);
 
     PCASMSetLocalSubdomains(pc, 2, NULL, NULL);  // Number of subdomains per proc
-    PCASMSetType(pc, PC_ASM_BASIC);
+    PCASMSetType(pc, PC_ASM_RESTRICT);
     PCASMSetOverlap(pc, 0); // Overlap
 
     KSPSetFromOptions(ksp);

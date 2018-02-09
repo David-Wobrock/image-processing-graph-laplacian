@@ -13,9 +13,6 @@ So,
 */
 void ComputeLaplacianMatrix(Mat* L_A, Mat* L_B, Mat K_A, Mat K_B)
 {
-    PetscInt p;
-    MatGetSize(K_A, &p, NULL);
-
     // D_A
     Vec D_vec, D_vecB;
     D_vec = MatRowSum(K_A);
