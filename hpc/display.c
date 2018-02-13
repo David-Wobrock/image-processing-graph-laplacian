@@ -1,87 +1,10 @@
 #include "display.h"
 
-#include <stdlib.h>
-#include <string.h>
 #include <mpi.h>
 #include <petscviewer.h>
 
 #include "utils.h"
 #include "write_img.h"
-
-static void ComputeAndSaveAffinityMatrixOfPixelNum(Mat phi, Mat Pi, const unsigned int width, const unsigned int height, const unsigned int pixel_num, const char* const filename)
-{
-    PetscMPIInt rank;
-    MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-
-    PetscInt p;
-    MatGetSize(phi, NULL, &p);
-
-    // Get one row of the eigenvalues (as diagonal matrix)
-    Mat phi_Vec;
-    MatCreate(PETSC_COMM_WORLD, &phi_Vec);
-    MatSetSizes(phi_Vec, PETSC_DECIDE, PETSC_DECIDE, 1, p);
-    MatSetType(phi_Vec, MATMPIDENSE);
-    MatSetFromOptions(phi_Vec);
-    MatSetUp(phi_Vec);
-    // Fill the diagonal (only the proc possessing the row)
-    PetscInt start, end;
-    MatGetOwnershipRange(phi, &start, &end);
-    if (start <= pixel_num && pixel_num < end) {
-        const PetscScalar* values;
-        MatGetRow(phi, pixel_num, NULL, NULL, &values);
-        for (unsigned int i = 0; i < p; ++i)
-        {
-            MatSetValues(phi_Vec, 1, &ZERO, 1, (int*)&i, values+i, INSERT_VALUES);
-        }
-        MatRestoreRow(phi, pixel_num, NULL, NULL, &values);
-    }
-    MatAssemblyBegin(phi_Vec, MAT_FINAL_ASSEMBLY);
-    MatAssemblyEnd(phi_Vec, MAT_FINAL_ASSEMBLY);
-
-    // Mult phi_Vec and Pi
-    Mat tmp;
-    MatMatMult(phi_Vec, Pi, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &tmp);
-    MatDestroy(&phi_Vec);
-
-    // Mult result with phi_T
-    Mat phi_T, affinity_img_on_vec;
-    //MatMatTransposeMult(tmp, phi, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &affinity_img_on_vec);
-    MatTranspose(phi, MAT_INITIAL_MATRIX, &phi_T);
-    MatMatMult(tmp, phi_T, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &affinity_img_on_vec);
-    MatDestroy(&phi_T);
-    MatDestroy(&tmp);
-
-    Mat non_zero_affinities = SetNegativesToZero(affinity_img_on_vec);
-    MatDestroy(&affinity_img_on_vec);
-    affinity_img_on_vec = non_zero_affinities;
-
-    // Rearrange vector into image (on one proc) and save
-    png_bytep* img_bytes = OneRowMat2pngbytes(affinity_img_on_vec, width, height, 255);
-    MatDestroy(&affinity_img_on_vec);
-    if (rank == 0)
-    {
-        write_png(filename, img_bytes, width, height);
-        for (unsigned int i = 0; i < height; ++i)
-        {
-            free(img_bytes[i]);
-        }
-        free(img_bytes);
-    }
-}
-
-void ComputeAndSaveAffinityMatrixOfPixel(Mat phi, Mat Pi, const unsigned int width, const unsigned int height, const unsigned int pixel_x, const unsigned int pixel_y)
-{
-    char filename[100], x_name[20], y_name[20];
-    sprintf(x_name, "%d", pixel_x);
-    sprintf(y_name, "%d", pixel_y);
-    strcpy(filename, "results/affinity_");
-    strcat(filename, x_name);
-    strcat(filename, "x");
-    strcat(filename, y_name);
-    strcat(filename, ".png");
-
-    ComputeAndSaveAffinityMatrixOfPixelNum(phi, Pi, width, height, xy2num(pixel_x, pixel_y, width), filename);
-}
 
 void ComputeAndSaveResult(const png_bytep* const img_bytes, Mat phi, Mat Pi, const unsigned int width, const unsigned int height)
 {
@@ -157,3 +80,46 @@ png_bytep* ComputeResultFromLaplacian(const png_bytep* const img_bytes, Mat phi,
     MatDestroy(&z);
     return output;
 }
+
+void WriteMatCol(Mat x, const unsigned int col_num, const char* const filename)
+{
+    PetscInt n;
+    MatGetSize(x, &n, NULL);
+
+    Vec v;
+    VecCreate(PETSC_COMM_WORLD, &v);
+    VecSetSizes(v, PETSC_DECIDE, n);
+    VecSetFromOptions(v);
+
+    MatGetColumnVector(x, v, col_num);
+
+    WriteVec(v, filename);
+
+    VecDestroy(&v);
+}
+
+/*void WritePngMatCol(Mat x, const unsigned int col_num, const unsigned int width, const unsigned int height, const char* const filename)
+{
+    PetscMPIInt rank;
+    MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+
+    // Get Mat with one col
+    Mat tmp = GetFirstCols(x, col_num);
+    Mat eigvec = GetLastCols(tmp, 1);
+    MatDestroy(&tmp);
+
+    // Get img
+    png_bytep* img = OneColMat2pngbytes(eigvec, width, height);
+    MatDestroy(&eigvec);
+
+    // Process 0 writes and deletes
+    if (rank == 0)
+    {
+        write_png(filename, img, width, height);
+        for (unsigned int i = 0; i < height; ++i)
+        {
+            free(img[i]);
+        }
+        free(img);
+    }
+}*/

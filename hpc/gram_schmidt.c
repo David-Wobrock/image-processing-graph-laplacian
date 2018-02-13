@@ -17,18 +17,16 @@ static void Projection(const Vec v, const Vec u, Vec* res)
 
     VecCopy(u, *res);
 
-    // VecScale is not collective, so put factor in Vector and do PointwiseMult
-    Vec factor_vec;
-    VecDuplicate(*res, &factor_vec);
-    VecSetFromOptions(factor_vec);
-    VecSet(factor_vec, factor);
-    VecAssemblyBegin(factor_vec);
-    VecAssemblyEnd(factor_vec);
-    VecPointwiseMult(*res, *res, factor_vec);
-    VecDestroy(&factor_vec);
+    VecScale(*res, factor);
 }
 
-static void OrthogonaliseAndNormaliseVecs(Vec* X, const unsigned int n, const unsigned int p, PetscScalar* norms)
+/*
+Orthonormalise a basis of p column vectors
+Uses Gram-Schimdt
+Input: X is already created and initialised, p the number of cols of X, n number of rows of X, an allocated norms vector of size p
+Output: Orthonormal X and norms filled with the norms of X before normalisation
+*/
+void OrthonormaliseVecs(Vec* X, const unsigned int n, const unsigned int p, PetscScalar* norms)
 {
     Vec sum_vec, proj_vec;
 
@@ -43,6 +41,7 @@ static void OrthogonaliseAndNormaliseVecs(Vec* X, const unsigned int n, const un
     VecAssemblyBegin(proj_vec);
     VecAssemblyEnd(proj_vec);
 
+    PetscScalar* current_norm = NULL;
     for (unsigned int k = 0; k < p; ++k)
     {
         VecSet(sum_vec, 0);
@@ -52,66 +51,16 @@ static void OrthogonaliseAndNormaliseVecs(Vec* X, const unsigned int n, const un
             VecAXPY(sum_vec, 1., proj_vec);
         }
         VecAXPBY(X[k], -1., 1, sum_vec);  // u_k = 1*v_k - sum
+
         if (norms)
         {
-            VecNormalize(X[k], norms+k);
+            current_norm = norms+k;
         }
+        VecNormalize(X[k], current_norm);
     }
 
     VecDestroy(&proj_vec);
     VecDestroy(&sum_vec);
-}
-
-/*
-Orthonormalise a basis of p column vectors
-Uses Gram-Schimdt
-Input: X is already created and initialised, p the number of cols of X, n number of rows of X, an allocated norms vector of size p
-Output: Orthonormal X and norms filled with the norms of X before normalisation
-*/
-void OrthonormaliseVecs(Vec* X, const unsigned int n, const unsigned int p, PetscScalar* norms)
-{
-    OrthogonaliseAndNormaliseVecs(X, n, p, norms); // with norms array => normalise
-}
-
-/*
-Orthonormalise columns of the input matrix
-*/
-Mat OrthonormaliseMat(Mat X)
-{
-    PetscInt n, p;
-    MatGetSize(X, &n, &p);
-
-    Mat Y;
-
-    Vec* vecs = Mat2Vecs(X);
-    OrthonormaliseVecs(vecs, n, p, NULL);
-    Vecs2Mat(vecs, &Y, p);
-
-    for (unsigned int i = 0; i < p; ++i)
-    {
-        VecDestroy(vecs+i);
-    }
-    free(vecs);
-    return Y;
-}
-
-Mat OrthogonaliseMat(Mat X)
-{
-    PetscInt n, p;
-    MatGetSize(X, &n, &p);
-
-    Mat Y;
-
-    Vec* vecs = Mat2Vecs(X);
-    OrthogonaliseAndNormaliseVecs(vecs, n, p, NULL); // NULL => do not normalise
-    Vecs2Mat(vecs, &Y, p);
-
-    for (unsigned int i = 0; i < p; ++i)
-    {
-        VecDestroy(vecs+i);
-    }
-    free(vecs);
-    return Y;
 }
 
 void NormaliseVecs(Vec* X, const unsigned int p, PetscScalar* norms)

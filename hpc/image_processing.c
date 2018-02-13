@@ -13,11 +13,9 @@
 #include "read_img.h"
 #include "utils.h"
 #include "sampling.h"
-#include "utils.h"
 #include "affinity.h"
 #include "eigendecomposition.h"
 #include "nystroem.h"
-#include "filter.h"
 #include "gram_schmidt.h"
 #include "display.h"
 #include "laplacian.h"
@@ -122,7 +120,7 @@ int main(int argc, char** argv)
     int width, height;
     png_bytep* img_bytes;
     ReadAndBcastImage(rank, filename, &img_bytes, &width, &height);
-    PetscPrintf(PETSC_COMM_WORLD, "Read image %s of size %dx%d => %d\n", filename, width, height, width*height);
+    PetscPrintf(PETSC_COMM_WORLD, "Read image %s of size %dx%d => %d pixels\n", filename, width, height, width*height);
 
     // * Define parameters
     unsigned int p; // Sample size
@@ -176,6 +174,9 @@ int main(int argc, char** argv)
     Mat eigvecs_perm = Permutation(eigvecs, sample_indices, p);
     MatDestroy(&eigvecs);
     eigvecs = eigvecs_perm;
+    WriteMatCol(eigvecs, 0, "results/eigenvector_0_laplacian.txt");
+    WriteMatCol(eigvecs, 1, "results/eigenvector_1_laplacian.txt");
+    WriteMatCol(eigvecs, 2, "results/eigenvector_2_laplacian.txt");
 
     // Apply some function to the eigenvalues
     Mat f_eigvals = MatPow(eigvals, 2);

@@ -6,7 +6,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from utils import rgb2ycc, ycc2rgb, num2xy
 from scipy import misc
-from scipy.linalg import eigh, sqrtm, svd
+from scipy.linalg import eigh, sqrtm, svd, orth
 from scipy.spatial import distance
 import logging
 import time
@@ -15,7 +15,6 @@ import sys
 from utils import xy2num
 
 logger = logging.getLogger(__name__)
-
 
 def display_sample_pixels(y, sample_indices):
     M, N = y.shape
@@ -51,8 +50,9 @@ def permutation(phi, sample_indices):
     return phi[correct_indices, :]
 
 
-def nystroem(y, sample_indices, affinity_function):
+def affinity(y, sample_indices, affinity_function):
     start = time.time()
+
     M, N = y.shape[:2]
 
     K_AB = affinity_function(y, sample_indices)  # Can be parallelised
@@ -63,9 +63,16 @@ def nystroem(y, sample_indices, affinity_function):
     v = np.delete(v, sample_indices)
     K_B = K_AB[:, v]
     logger.info('Split K_AB into K_A and K_B in {0}s'.format(time.time() - start_split))
+    return K_A, K_B
 
+
+def nystroem(K_A, K_B):
+    start = time.time()
     start_svd = time.time()
     phi_A, Pi, _ = svd(K_A)
+    #Pi, phi_A = np.linalg.eigh(K_A)
+    #Pi = Pi[::-1]
+    #phi_A = phi_A[:, ::-1]
     logger.info('SVD size {0} took {1}s'.format(K_A.shape, time.time() - start_svd))
 
     start_phi_approx = time.time()
@@ -144,10 +151,44 @@ def compute_and_display_pixel_degree(M, N, phi, Pi):
 def smoothing_matrix(sample_indices, phi, Pi):
     start = time.time()
 
-    W_A, W_B = sinkhorn(phi, Pi)
-    W_A[W_A<0] = 0
-    V, L = orthogonalisation(W_A, W_B)
+    K = (phi * Pi).dot(phi.T)
+    size = K.shape[0]
+    D = np.sum(K, axis=1)
+    ##return np.diag(1./D).dot(K)  # with Random Walk Laplacian
+    alpha = 1./np.mean(D)
+    Lapl = alpha*(np.diag(D)-K)
+    #return Lapl
+    W = np.identity(size) + alpha*(K - np.diag(D))
+    W_A = W[:len(sample_indices), :len(sample_indices)]
+    W_B = W[:len(sample_indices), len(sample_indices):]
+    #return W  # Renormalised Laplacian
+
+    #W_A, W_B = sinkhorn(phi, Pi)
+    #W_A[W_A<0] = 0
+    #K_f = (phi[:len(sample_indices)] * Pi).dot(phi.T)
+    #D_f = np.sum(K_f, axis=1)
+    #alpha_f = 1./np.mean(D_f)
+    #ident = np.concatenate(
+    #    (np.identity(len(D_f)),
+    #     np.zeros((K_f.shape[0], K_f.shape[1]-len(sample_indices)))),
+    #    axis=1)
+    #d_full = np.concatenate(
+    #    (np.diag(D_f), np.zeros((K_f.shape[0], K_f.shape[1]-len(sample_indices)))), axis=1)
+    #WAWB = ident + alpha_f*(K_f - d_full)
+    #W_A = WAWB[:, :len(sample_indices)]
+    #W_B = WAWB[:, len(sample_indices):]
+    #V, L = orthogonalisation(W_A, W_B)
+    #phi_A, L, _ = svd(W_A)
+    L, phi_A = np.linalg.eigh(W_A)
+    L = L[::-1]
+    phi_A = phi_A[:, ::-1]
+    V = np.concatenate((
+        phi_A,
+        np.dot(
+            W_B.T,
+            phi_A * (1./L))))
     V = permutation(V, sample_indices)
+    #V = GS(V)
 
     logger.info('Returned smoothing matrix in {0}s'.format(time.time() - start))
     return V, L
@@ -171,6 +212,8 @@ def smoothing(y, sample_indices, phi, Pi):
     display_or_save('eigvec3.png', V[:, 2].reshape(M, N), cmap='gray')
 
     z_vector = np.dot(V, L * np.dot(V.T, y_vector))
+    #W = smoothing_matrix(sample_indices, permutation(phi, sample_indices), Pi)
+    #z_vector = W.dot(y_vector)
     z = z_vector.reshape(M, N)
     logger.info('Smoothing done in {0}s'.format(time.time() - start))
     return z
@@ -206,19 +249,83 @@ def image_processing(y, cr=None, cb=None, **kwargs):
     sampling_code = kwargs.get('sampling', sampling.SPATIALLY_UNIFORM)
     sampling_function = sampling.methods[sampling_code]
     sample_size = int(M*N*0.01)
-    #sample_size = 100
+    #sample_size = 200
     sample_indices = sampling_function(M, N, sample_size)
     logger.info('Number of sample pixels: Theory {0} / Real {1} (or {2:.2f}% of the all pixels)'.format(sample_size, len(sample_indices), (len(sample_indices)*100.)/(M*N)))
     #display_sample_pixels(y, sample_indices)
 
+    B_size = (len(sample_indices), (M*N) - len(sample_indices))
     # Nystroem
-    affinity_code = kwargs.get('affinity', affinity_methods.PHOTOMETRIC)
+    affinity_code = kwargs.get('affinity', affinity_methods.BILATERAL)
     affinity_function = affinity_methods.methods[affinity_code]
-    phi, Pi = nystroem(y, sample_indices, affinity_function)
+    K_A, K_B = affinity(y, sample_indices, affinity_function)
+
+    phi, Pi = nystroem(K_A, K_B)
+    Pi = Pi[::-1]
+    phi = phi[:, ::-1]
+    phi = permutation(phi, sample_indices)
+    K = (phi*Pi).dot(phi.T)
+    D = np.sum(K, axis=1)
+    alphaF = 1./np.mean(D)
+    D = np.diag(D)
+    Lapl = alphaF*(D-K)
+    W = np.identity(M*N) - Lapl
+
+    D_A = np.sum(K_A, axis=1) + np.sum(K_B, axis=1)
+    alpha = 1./np.mean(D_A)
+    D_A = np.diag(D_A)
+    L_A = alpha * (D_A - K_A)
+    L_B = -alpha*K_B
+    #L_B = -alpha*K_B
+    #D_inv_sqrt = np.diag(1./np.sqrt(D_A))
+    #mean = [np.mean(1./np.sqrt(D_A))] * (M*N - len(sample_indices))
+    #D_inv_sqrtB = np.diag(mean)
+    #L_A = np.identity(len(sample_indices)) - np.dot(D_inv_sqrt, K_A).dot(D_inv_sqrt)
+    #L_B = -(np.dot(D_inv_sqrt, K_B).dot(D_inv_sqrtB))
+    #phi, Pi = nystroem(L_A, L_B)
+
+    mu, phi_A = np.linalg.eigh(L_A)
+    phi = np.concatenate((
+        phi_A,
+        np.dot(
+            L_B.T,
+            phi_A * (1./mu))))
+    Pi = 1-mu
+    #Pi = np.linalg.eigvalsh(Lapl)
+
+    plt.figure()
+    plt.plot(range(1, mu.shape[0]+1), mu)
+    plt.savefig('results/eigenvalues_Lapl.png')
+    plt.figure()
+    plt.plot(range(1, Pi.shape[0]+1), Pi)
+    plt.savefig('results/eigenvalues_W.png')
+    phi = permutation(phi, sample_indices)
+
+    y_vector = y.reshape(M*N)
+    z_vector = y_vector - np.dot(phi*(mu+5), phi.T.dot(y_vector))
+    #z_vector = y_vector - Lapl.dot(y_vector)
+    #z_vector = Lapl.dot(y_vector)
+    #z_vector = np.dot(phi*Pi, phi.T.dot(y_vector))
+    #z_vector = (np.identity(M*N) - np.dot(phi*Pi, phi.T)).dot(y_vector)
+    #z_vector = W.dot(y_vector)
+    z = z_vector.reshape(M, N)
+
+    """
+    phi, Pi = nystroem(K_A, K_B)
+    phi = permutation(phi, sample_indices)
+    K = (phi*Pi).dot(phi.T)
+    #D = np.sum(K_A, axis=1) + np.sum(K_B, axis=1)
+    D = np.sum(K, axis=1)
+    alpha = 1./np.mean(D)
+    D_diag = np.diag(D)
+    Lapl = alpha*(D_diag-K)
+    W = np.identity(M*N) - Lapl
+    z = W.dot(y.reshape(M*N)).reshape(M, N)
+    """
 
     # Display affinity vector of a pixel
-    phi_perm = permutation(phi, sample_indices)
-    compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 0, 0)
+    #phi_perm = permutation(phi, sample_indices)
+    #compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 5, 5)
     #compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 165, 65)
     #compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 80, 120)
     #compute_and_display_affinity_matrix(M, N, phi_perm, Pi, 2373, 3441)
@@ -230,7 +337,18 @@ def image_processing(y, cr=None, cb=None, **kwargs):
     #compute_and_display_pixel_degree(M, N, phi, Pi)
 
     # Smoothing
-    z = smoothing(y, sample_indices, phi, Pi)
+    #z = smoothing(y, sample_indices, phi, Pi)
+    #z = np.empty(M*N)
+    #y_vector = y.reshape(M*N)
+    #for i in range(M*N):
+    #    print(i)
+    #    dirac = np.zeros(M*N)
+    #    dirac[i] = 1.
+    #    k_vec = (phi_perm[i] * Pi).dot(phi_perm.T)
+    #    d_i = np.sum(k_vec)
+    #    alpha = 0.0006
+    #    z[i] = (dirac + alpha*(k_vec - (d_i*dirac))).dot(y_vector)
+    #z = z.reshape(M, N)
 
     # Sharpening
     #z = sharpening(y, sample_indices, phi, Pi)
