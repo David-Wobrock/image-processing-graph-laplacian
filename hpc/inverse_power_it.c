@@ -143,19 +143,28 @@ void InversePowerIteration(const Mat A, const unsigned int m, Mat* eigenvectors,
     }
 
     r_norm = ComputeResidualsNorm(A, X_k, m);
+    unsigned int num_outer_it = 0;
     while (r_norm > epsilon)
     {
+        ++num_outer_it;
+        double solve_start = MPI_Wtime();
         for (unsigned int i = 0; i < m; ++i)
         {
             KSPSolve(ksp, X_k[i], X_k[i]);
         }
+        PetscPrintf(PETSC_COMM_WORLD, "* Solving %d systems took %fs\n", m, MPI_Wtime() - solve_start);
         // Save X_k before orthonormalisation
         CopyVecs(X_k, X_k_before_orth, m);
 
+        double ortho_start = MPI_Wtime();
         OrthonormaliseVecs(X_k, p, m, norms);
+        PetscPrintf(PETSC_COMM_WORLD, "* Orthonormalising took %fs\n", MPI_Wtime() - ortho_start);
+        double res_start = MPI_Wtime();
         r_norm = ComputeResidualsNorm(A, X_k, m);
-        PetscPrintf(PETSC_COMM_WORLD, "New residual: %f\n", r_norm);
+        PetscPrintf(PETSC_COMM_WORLD, "* Computing residual %fs\n***\n", MPI_Wtime() - res_start);
+        //PetscPrintf(PETSC_COMM_WORLD, "New residual: %f\n", r_norm);
     }
+    PetscPrintf(PETSC_COMM_WORLD, "Inverse subspace iteration took %d outer iterations\n", num_outer_it);
     KSPDestroy(&ksp);
 
     // Compute eigenvalues
