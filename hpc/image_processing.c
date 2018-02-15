@@ -177,9 +177,12 @@ int main(int argc, char** argv)
     WriteMatCol(eigvecs, 0, "results/eigenvector_0_laplacian.txt");
     WriteMatCol(eigvecs, 1, "results/eigenvector_1_laplacian.txt");
     WriteMatCol(eigvecs, 2, "results/eigenvector_2_laplacian.txt");
+    WritePngMatCol(eigvecs, 0, width, height, "results/eigenvector_0_laplacian.png");
+    WritePngMatCol(eigvecs, 1, width, height, "results/eigenvector_1_laplacian.png");
+    WritePngMatCol(eigvecs, 2, width, height, "results/eigenvector_2_laplacian.png");
 
     // Apply some function to the eigenvalues
-    Mat f_eigvals = MatPow(eigvals, 2);
+    Mat f_eigvals = MatPow(eigvals, 6);
     MatDestroy(&eigvals);
 
     // Compute output image z = y - (phi*Pi*phi.T*y)

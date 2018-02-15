@@ -98,7 +98,7 @@ void WriteMatCol(Mat x, const unsigned int col_num, const char* const filename)
     VecDestroy(&v);
 }
 
-/*void WritePngMatCol(Mat x, const unsigned int col_num, const unsigned int width, const unsigned int height, const char* const filename)
+void WritePngMatCol(Mat x, const unsigned int col_num, const unsigned int width, const unsigned int height, const char* const filename)
 {
     PetscMPIInt rank;
     MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
@@ -122,4 +122,4 @@ void WriteMatCol(Mat x, const unsigned int col_num, const char* const filename)
         }
         free(img);
     }
-}*/
+}
