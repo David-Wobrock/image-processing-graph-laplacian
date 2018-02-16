@@ -116,6 +116,15 @@ static PetscBool NoApproximationRequired()
     return found_noapprox;
 }
 
+static PetscBool UseSlepc()
+{
+    PetscErrorCode ierr = 0;
+    PetscBool found_slepc;
+
+    ierr = PetscOptionsHasName(NULL, NULL, "-use_slepc", &found_slepc); CHKERRQ(ierr);
+    return found_slepc;
+}
+
 static png_bytep* EntireComputation(const png_bytep* const img_bytes, const unsigned int width, const unsigned int height)
 {
     // Compute affinity matrix
@@ -177,13 +186,22 @@ static png_bytep* ApproximationComputation(png_bytep* img_bytes, const unsigned 
     double start_inv_it = MPI_Wtime();
     Mat eigvals, eigvecs_A;
     PetscPrintf(PETSC_COMM_WORLD, "Computing %d smallest eigenvalues... ", m);
-    InversePowerIteration(L_A, m, &eigvecs_A, &eigvals);
-    //EigendecompositionSmallest(L_A, m, &eigvecs_A, &eigvals, NULL);
+    if (UseSlepc())
+    {
+        EigendecompositionSmallest(L_A, m, &eigvecs_A, &eigvals, NULL);
+    }
+    else
+    {
+        InversePowerIteration(L_A, m, &eigvecs_A, &eigvals);
+    }
     PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_inv_it);
     WriteDiagMat(eigvals, "results/eigenvalues_laplacian.txt");
     MatDestroy(&L_A);
 
-    Mat eigvals_inv = InverseDiagMat(eigvals);
+    MatDestroy(&L_B);
+    MatDestroy(&eigvecs_A);
+    MatDestroy(&eigvals);
+    /*Mat eigvals_inv = InverseDiagMat(eigvals);
 
     // Nyström
     double start_nystroem = MPI_Wtime();
@@ -218,7 +236,8 @@ static png_bytep* ApproximationComputation(png_bytep* img_bytes, const unsigned 
     MatDestroy(&f_eigvals);
     free(sample_indices);
 
-    return output_img;
+    return output_img;*/
+    return NULL;
 }
 
 int main(int argc, char** argv)
@@ -232,7 +251,7 @@ int main(int argc, char** argv)
     GetFilePath(filename);
 
     int width, height;
-    png_bytep *img_bytes, *output_img;
+    png_bytep *img_bytes, *output_img = NULL;
     ReadAndBcastImage(rank, filename, &img_bytes, &width, &height);
     PetscPrintf(PETSC_COMM_WORLD, "Read image %s of size %dx%d => %d pixels\n", filename, width, height, width*height);
 
@@ -249,7 +268,10 @@ int main(int argc, char** argv)
     if (rank == 0)
     {
         write_png("results/input.png", img_bytes, width, height);
-        write_png("results/output.png", output_img, width, height);
+        if (output_img)
+        {
+            write_png("results/output.png", output_img, width, height);
+        }
     }
 
     // End
@@ -262,7 +284,7 @@ int main(int argc, char** argv)
     }
     free(img_bytes);
 
-    if (rank == 0)
+    if (rank == 0 && output_img)
     {
         for (unsigned int i = 0; i < height; ++i)
         {
