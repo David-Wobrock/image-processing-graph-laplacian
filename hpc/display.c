@@ -138,7 +138,8 @@ png_bytep* ComputeResultFromEntireLaplacian(const png_bytep* const img_bytes, Ma
 
     Mat z_tmp = AboveXSetY(z, 255, 255);
     MatDestroy(&z);
-    z = z_tmp;
+    z = SetNegativesToZero(z_tmp);
+    MatDestroy(&z_tmp);
 
     png_bytep* output = OneColMat2pngbytes(z, width, height);
     MatDestroy(&z);
