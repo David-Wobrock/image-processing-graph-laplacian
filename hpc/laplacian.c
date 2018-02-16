@@ -40,3 +40,26 @@ void ComputeLaplacianMatrix(Mat* L_A, Mat* L_B, Mat K_A, Mat K_B)
 
     MatDestroy(&D_A);
 }
+
+void ComputeEntireLaplacianMatrix(Mat* Lapl, Mat K)
+{
+    // D
+    Vec D_vec;
+    D_vec = MatRowSum(K);
+
+    Mat D;
+    MatDuplicate(K, MAT_DO_NOT_COPY_VALUES, &D);
+    MatZeroEntries(D);
+    MatDiagonalSet(D, D_vec, INSERT_VALUES);
+
+    // alpha
+    PetscScalar alpha = 1.0 / VecMean(D_vec);
+    VecDestroy(&D_vec);
+
+    // Compute Lapl
+    MatDuplicate(K, MAT_COPY_VALUES, Lapl);
+    MatAYPX(*Lapl, -1.0, D, SAME_NONZERO_PATTERN); // Y = a*Y + X
+    MatScale(*Lapl, alpha);
+
+    MatDestroy(&D);
+}

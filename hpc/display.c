@@ -123,3 +123,20 @@ void WritePngMatCol(Mat x, const unsigned int col_num, const unsigned int width,
         free(img);
     }
 }
+
+png_bytep* ComputeResultFromEntireLaplacian(const png_bytep* const img_bytes, Mat Lapl, const unsigned int width, const unsigned int height)
+{
+    Mat z = pngbytes2OneColMat(img_bytes, width, height);
+
+    Mat Lapl_y;
+
+    MatMatMult(Lapl, z, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &Lapl_y);
+
+    // z = y - Ly
+    MatAXPY(z, -1.0, Lapl_y, SAME_NONZERO_PATTERN);
+    MatDestroy(&Lapl_y);
+
+    png_bytep* output = OneColMat2pngbytes(z, width, height);
+    MatDestroy(&z);
+    return output;
+}

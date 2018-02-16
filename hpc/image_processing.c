@@ -24,7 +24,7 @@
 
 /*
 Initialize Slepc/Petsc/MPI
-Input: argc, argv, the parameters of main()
+Input: argc, argv, the parameters of main
 Output: rank and size
 */
 static PetscErrorCode InitProgram(int argc, char** argv, int* const rank, int* const size)
@@ -107,21 +107,45 @@ static void ReadAndBcastImage(const int rank, const char* const filename, png_by
     }
 }
 
-int main(int argc, char** argv)
+static PetscBool NoApproximationRequired()
 {
-    char filename[PETSC_MAX_PATH_LEN];
-    PetscMPIInt rank, size;
+    PetscErrorCode ierr = 0;
+    PetscBool found_noapprox;
 
-    InitProgram(argc, argv, &rank, &size);
-    PetscPrintf(PETSC_COMM_WORLD, "Running with %d processes\n", size);
-    double start_time = MPI_Wtime();
-    GetFilePath(filename);
+    ierr = PetscOptionsHasName(NULL, NULL, "-noapprox", &found_noapprox); CHKERRQ(ierr);
+    return found_noapprox;
+}
 
-    int width, height;
-    png_bytep* img_bytes;
-    ReadAndBcastImage(rank, filename, &img_bytes, &width, &height);
-    PetscPrintf(PETSC_COMM_WORLD, "Read image %s of size %dx%d => %d pixels\n", filename, width, height, width*height);
+static png_bytep* EntireComputation(const png_bytep* const img_bytes, const unsigned int width, const unsigned int height)
+{
+    // Compute affinity matrix
+    Mat K;
+    double start_affinity = MPI_Wtime();
+    PetscPrintf(PETSC_COMM_WORLD, "Computing entire affinity matrix... ");
+    ComputeEntireAffinityMatrix(&K, img_bytes, width, height);
+    PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_affinity);
 
+    // Compute Laplacian
+    Mat Lapl;
+    double start_laplacian = MPI_Wtime();
+    PetscPrintf(PETSC_COMM_WORLD, "Computing entire Laplacian matrix... ");
+    ComputeEntireLaplacianMatrix(&Lapl, K);
+    PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_laplacian);
+    MatDestroy(&K);
+
+    // Compute output image
+    double start_result = MPI_Wtime();
+    PetscPrintf(PETSC_COMM_WORLD, "Computing output image... ");
+    png_bytep* output_img = ComputeResultFromEntireLaplacian(img_bytes, Lapl, width, height);
+    PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_result);
+    MatDestroy(&Lapl);
+
+    //return output_img;
+    return output_img;
+}
+
+static png_bytep* ApproximationComputation(png_bytep* img_bytes, const unsigned int width, const unsigned int height)
+{
     // * Define parameters
     unsigned int p; // Sample size
     p = width*height*0.01; // 1%
@@ -192,10 +216,39 @@ int main(int argc, char** argv)
     PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_result);
     MatDestroy(&eigvecs);
     MatDestroy(&f_eigvals);
+    free(sample_indices);
+
+    return output_img;
+}
+
+int main(int argc, char** argv)
+{
+    char filename[PETSC_MAX_PATH_LEN];
+    PetscMPIInt rank, size;
+
+    InitProgram(argc, argv, &rank, &size);
+    double start_time = MPI_Wtime();
+    PetscPrintf(PETSC_COMM_WORLD, "Running with %d processes\n", size);
+    GetFilePath(filename);
+
+    int width, height;
+    png_bytep *img_bytes, *output_img;
+    ReadAndBcastImage(rank, filename, &img_bytes, &width, &height);
+    PetscPrintf(PETSC_COMM_WORLD, "Read image %s of size %dx%d => %d pixels\n", filename, width, height, width*height);
+
+    if (NoApproximationRequired())
+    {
+        output_img = EntireComputation(img_bytes, width, height);
+    }
+    else
+    {
+        output_img = ApproximationComputation(img_bytes, width, height);
+    }
 
     // Write image
     if (rank == 0)
     {
+        write_png("results/input.png", img_bytes, width, height);
         write_png("results/output.png", output_img, width, height);
     }
 
@@ -203,7 +256,6 @@ int main(int argc, char** argv)
     PetscPrintf(PETSC_COMM_WORLD, "Total computation time: %fs\n", MPI_Wtime() - start_time);
 
     // Clean up
-    free(sample_indices);
     for (unsigned int i = 0; i < height; ++i)
     {
         free(img_bytes[i]);

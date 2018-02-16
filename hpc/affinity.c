@@ -260,3 +260,77 @@ void ComputeAffinityMatrices(Mat* K_A, Mat* K_B, const png_bytep* const img_byte
     MatAssemblyEnd(*K_A, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(*K_B, MAT_FINAL_ASSEMBLY);
 }
+
+void ComputeEntireAffinityMatrix(Mat* K, const png_bytep* const img_bytes, const int width, const int height)
+{
+    const unsigned int N = width * height;
+    MatCreate(PETSC_COMM_WORLD, K);
+    MatSetSizes(*K, PETSC_DECIDE, PETSC_DECIDE, N, N);
+    MatSetType(*K, MATMPIDENSE);
+    MatSetFromOptions(*K);
+    MatSetUp(*K);
+
+    // Each process fills his part, row by row
+    PetscInt istart, iend;
+    Vec v, current_pixels_value, current_pixels_x, current_pixels_y;
+
+    PetscScalar* values = (PetscScalar*) malloc(sizeof(PetscScalar) * N); // One row at a time
+    PetscInt* col_indices = (PetscInt*) malloc(sizeof(PetscInt) * N);
+    for (unsigned int i = 0; i < N; ++i)
+    {
+        col_indices[i] = i;
+    }
+
+    VecCreateSeq(PETSC_COMM_SELF, N, &current_pixels_x);
+    VecCreateSeq(PETSC_COMM_SELF, N, &current_pixels_y);
+    VecCreateSeq(PETSC_COMM_SELF, N, &current_pixels_value);
+    double current_value;
+    unsigned int current_x, current_y, current_idx;
+    // These vectors will contain all gray values, x and y of the sample pixels
+    // Each line is computed locally, so they are local
+    for (unsigned int j = 0; j < N; ++j)
+    {
+        current_idx = j;
+        current_x = num2x(current_idx, width);
+        current_y = num2y(current_idx, width);
+        VecSetValue(
+            current_pixels_x,
+            j,
+            current_x,
+            INSERT_VALUES);
+        VecSetValue(
+            current_pixels_y,
+            j,
+            current_y,
+            INSERT_VALUES);
+        VecSetValue(
+            current_pixels_value,
+            j,
+            img_bytes[current_x][current_y],
+            INSERT_VALUES);
+    }
+    VecDuplicate(current_pixels_value, &v);
+
+    MatGetOwnershipRange(*K, &istart, &iend);
+    for (unsigned int i = istart; i < iend; ++i)
+    {
+        current_idx = i;
+        current_x = num2x(current_idx, width);
+        current_y = num2y(current_idx, width);
+        current_value = img_bytes[current_x][current_y];
+
+        ComputeDistance(current_pixels_x, current_pixels_y, current_pixels_value, current_x, current_y, current_value, v);
+
+        VecGetValues(v, N, col_indices, values);
+        MatSetValues(*K, 1, (int*)&i, N, col_indices, values, INSERT_VALUES);
+    }
+    VecDestroy(&v);
+    VecDestroy(&current_pixels_value);
+    VecDestroy(&current_pixels_y);
+    VecDestroy(&current_pixels_x);
+    free(col_indices);
+    free(values);
+
+    MatAssemblyBegin(*K, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(*K, MAT_FINAL_ASSEMBLY);
+}
