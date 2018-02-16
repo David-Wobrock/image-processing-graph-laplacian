@@ -136,6 +136,10 @@ png_bytep* ComputeResultFromEntireLaplacian(const png_bytep* const img_bytes, Ma
     MatAXPY(z, -1.0, Lapl_y, SAME_NONZERO_PATTERN);
     MatDestroy(&Lapl_y);
 
+    Mat z_tmp = AboveXSetY(z, 255, 255);
+    MatDestroy(&z);
+    z = z_tmp;
+
     png_bytep* output = OneColMat2pngbytes(z, width, height);
     MatDestroy(&z);
     return output;
