@@ -9,7 +9,7 @@ Any of these 4 can be NULL if the output is not wanted.
 eigenvalues and eigenvalues_inv will be filled on the diagonal and be setted as MPIAIJ.
 eigenvectors will be of type MPIDENSE
 */
-static void Eigendecomposition(Mat A, const unsigned int num_eigenpairs, Mat* eigenvectors, Mat* eigenvalues, Mat* eigenvalues_inv, EPSWhich which)
+static void Eigendecomposition(Mat A, const PetscInt num_eigenpairs, Mat* eigenvectors, Mat* eigenvalues, Mat* eigenvalues_inv, EPSWhich which)
 {
     EPS eps;
     EPSCreate(PETSC_COMM_WORLD, &eps);
@@ -64,30 +64,30 @@ static void Eigendecomposition(Mat A, const unsigned int num_eigenpairs, Mat* ei
     VecGetOwnershipRange(eigvec, &istart, &iend);
     values = (PetscScalar*) malloc(sizeof(PetscScalar) * (iend-istart));
     row_indices = (PetscInt*) malloc(sizeof(PetscInt) * (iend-istart));
-    for (unsigned int i = 0; i < (iend-istart); ++i)
+    for (PetscInt i = 0; i < (iend-istart); ++i)
     {
         row_indices[i] = i+istart;
     }
 
     // Retrieving eigenpairs and filling structures
-    for (unsigned int i = 0; i < num_eigenpairs; ++i)
+    for (PetscInt i = 0; i < num_eigenpairs; ++i)
     {
         EPSGetEigenpair(eps, i, &eigval, NULL, eigvec, NULL);
 
         if (eigenvectors)
         {
             VecGetValues(eigvec, iend-istart, row_indices, values);
-            MatSetValues(*eigenvectors, iend-istart, row_indices, 1, (int*)&i, values, INSERT_VALUES);
+            MatSetValues(*eigenvectors, iend-istart, row_indices, 1, &i, values, INSERT_VALUES);
         }
         if (eigenvalues)
         {
-            MatSetValues(*eigenvalues, 1, (int*)&i, 1, (int*)&i, &eigval, INSERT_VALUES); // Diagonal
+            MatSetValues(*eigenvalues, 1, &i, 1, &i, &eigval, INSERT_VALUES); // Diagonal
         }
 
         if (eigenvalues_inv)
         {
             eigval_inv = 1./eigval;
-            MatSetValues(*eigenvalues_inv, 1, (int*)&i, 1, (int*)&i, &eigval_inv, INSERT_VALUES); // Diagonal 1/eigval
+            MatSetValues(*eigenvalues_inv, 1, &i, 1, &i, &eigval_inv, INSERT_VALUES); // Diagonal 1/eigval
         }
     }
     VecDestroy(&eigvec);
@@ -113,12 +113,12 @@ static void Eigendecomposition(Mat A, const unsigned int num_eigenpairs, Mat* ei
     }
 }
 
-void EigendecompositionLargest(Mat A, const unsigned int num_eigenpairs, Mat* eigenvectors, Mat* eigenvalues, Mat* eigenvalues_inv)
+void EigendecompositionLargest(Mat A, const PetscInt num_eigenpairs, Mat* eigenvectors, Mat* eigenvalues, Mat* eigenvalues_inv)
 {
     Eigendecomposition(A, num_eigenpairs, eigenvectors, eigenvalues, eigenvalues_inv, EPS_LARGEST_MAGNITUDE);
 }
 
-void EigendecompositionSmallest(Mat A, const unsigned int num_eigenpairs, Mat* eigenvectors, Mat* eigenvalues, Mat* eigenvalues_inv)
+void EigendecompositionSmallest(Mat A, const PetscInt num_eigenpairs, Mat* eigenvectors, Mat* eigenvalues, Mat* eigenvalues_inv)
 {
     Eigendecomposition(A, num_eigenpairs, eigenvectors, eigenvalues, eigenvalues_inv, EPS_SMALLEST_MAGNITUDE);
 }

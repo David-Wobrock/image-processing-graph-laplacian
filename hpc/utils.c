@@ -41,18 +41,18 @@ void Vecs2Mat(Vec* vecs, Mat* m, const unsigned int ncols)
     PetscInt start, end;
     PetscInt* indices;
     PetscScalar* values;
-    for (unsigned int i = 0; i < ncols; ++i)
+    for (unsigned long int i = 0; i < ncols; ++i)
     {
         VecGetOwnershipRange(vecs[i], &start, &end);
         indices = (PetscInt*) malloc(sizeof(PetscInt) * (end-start));
-        for (unsigned int j = 0; j < end-start; ++j)
+        for (unsigned long int j = 0; j < end-start; ++j)
         {
             indices[j] = start+j;
         }
         values = (PetscScalar*) malloc(sizeof(PetscScalar) * (end-start));
 
         VecGetValues(vecs[i], end-start, indices, values);
-        MatSetValues(*m, end-start, indices, 1, (int*)&i, values, ADD_VALUES);
+        MatSetValues(*m, end-start, indices, 1, (long int*)&i, values, ADD_VALUES);
 
         free(values);
         free(indices);
@@ -64,7 +64,7 @@ void Vecs2Mat(Vec* vecs, Mat* m, const unsigned int ncols)
 
 Vec* Mat2Vecs(Mat m)
 {
-    unsigned int i;
+    unsigned long int i;
 
     PetscInt n, p;
     MatGetSize(m, &n, &p);

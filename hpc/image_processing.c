@@ -159,7 +159,7 @@ static png_bytep* ApproximationComputation(png_bytep* img_bytes, const unsigned 
     unsigned int p; // Sample size
     p = width*height*0.01; // 1%
     //p = width*height*0.005; // 0.5%
-    PetscInt m = GetNumberEigenvalues(p); // Number of eigenvalues
+    const PetscInt m = GetNumberEigenvalues(p); // Number of eigenvalues
 
     // Sampling (all compute the same locally)
     unsigned int* sample_indices; // Must be sorted ASC

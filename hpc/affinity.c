@@ -33,7 +33,7 @@ static void ComputeSpatialFilter(Vec sample_pixels_x, Vec sample_pixels_y, const
     VecShift(y_loc, -((PetscScalar) sample_y));
     VecPow(y_loc, 2);
     PetscInt* col_indices = (PetscInt*) malloc(sizeof(PetscInt) * sample_size);
-    for (unsigned int i = 0; i < sample_size; ++i)
+    for (unsigned long int i = 0; i < sample_size; ++i)
     {
         col_indices[i] = i;
     }
@@ -41,7 +41,7 @@ static void ComputeSpatialFilter(Vec sample_pixels_x, Vec sample_pixels_y, const
     PetscScalar* y_values = (PetscScalar*) malloc(sizeof(PetscScalar) * sample_size);
     VecGetValues(x_loc, sample_size, col_indices, x_values);
     VecGetValues(y_loc, sample_size, col_indices, y_values);
-    for (unsigned int i = 0; i < sample_size; ++i)
+    for (unsigned long int i = 0; i < sample_size; ++i)
     {
         x_values[i] = x_values[i] + y_values[i];
     }
@@ -76,7 +76,7 @@ static void ComputeBilateralFilter(Vec sample_pixels_x, Vec sample_pixels_y, Vec
     PetscInt sample_size;
     VecGetSize(x_loc, &sample_size);
     PetscInt* col_indices = (PetscInt*) malloc(sizeof(PetscInt) * sample_size);
-    for (unsigned int i = 0; i < sample_size; ++i)
+    for (unsigned long int i = 0; i < sample_size; ++i)
     {
         col_indices[i] = i;
     }
@@ -84,7 +84,7 @@ static void ComputeBilateralFilter(Vec sample_pixels_x, Vec sample_pixels_y, Vec
     PetscScalar* y_values = (PetscScalar*) malloc(sizeof(PetscScalar) * sample_size);
     VecGetValues(x_loc, sample_size, col_indices, x_values);
     VecGetValues(y_loc, sample_size, col_indices, y_values);
-    for (unsigned int i = 0; i < sample_size; ++i)
+    for (unsigned long int i = 0; i < sample_size; ++i)
     {
         x_values[i] = x_values[i] + y_values[i];
     }
@@ -144,7 +144,7 @@ void ComputeAffinityMatrices(Mat* K_A, Mat* K_B, const png_bytep* const img_byte
     values = (PetscScalar*) malloc(sizeof(PetscScalar) * sample_size); // One row at a time
     col_indices = (PetscInt*) malloc(sizeof(PetscInt) * sample_size);
     double sample_value;
-    for (unsigned int i = 0; i < sample_size; ++i)
+    for (PetscInt i = 0; i < sample_size; ++i)
     {
         col_indices[i] = i;
     }
@@ -179,7 +179,7 @@ void ComputeAffinityMatrices(Mat* K_A, Mat* K_B, const png_bytep* const img_byte
     VecDuplicate(sample_pixels_value, &v);
 
     MatGetOwnershipRange(*K_A, &istart, &iend);
-    for (unsigned int i = istart; i < iend; ++i)
+    for (unsigned long int i = istart; i < iend; ++i)
     {
         sample_idx = sample_indices[i];
         sample_x = num2x(sample_idx, width);
@@ -189,7 +189,7 @@ void ComputeAffinityMatrices(Mat* K_A, Mat* K_B, const png_bytep* const img_byte
         ComputeDistance(sample_pixels_x, sample_pixels_y, sample_pixels_value, sample_x, sample_y, sample_value, v);
 
         VecGetValues(v, sample_size, col_indices, values);
-        MatSetValues(*K_A, 1, (int*)&i, sample_size, col_indices, values, ADD_VALUES);
+        MatSetValues(*K_A, 1, (long int*)&i, sample_size, col_indices, values, INSERT_VALUES);
     }
     VecDestroy(&v);
     VecDestroy(&sample_pixels_value);
@@ -217,7 +217,7 @@ void ComputeAffinityMatrices(Mat* K_A, Mat* K_B, const png_bytep* const img_byte
     VecDuplicate(sample_pixels_value, &sample_pixels_y);
     unsigned int tmp_idx = 0;
     unsigned int idx = 0;
-    for (unsigned int j = 0; j < num_pixels; ++j)
+    for (unsigned long int j = 0; j < num_pixels; ++j)
     {
         if (j != sample_indices[tmp_idx])
         {
@@ -236,7 +236,7 @@ void ComputeAffinityMatrices(Mat* K_A, Mat* K_B, const png_bytep* const img_byte
 
     VecDuplicate(sample_pixels_value, &v);
     MatGetOwnershipRange(*K_B, &istart, &iend);
-    for (unsigned int i = istart; i < iend; ++i)
+    for (PetscInt i = istart; i < iend; ++i)
     {
         sample_idx = sample_indices[i];
         sample_x = num2x(sample_idx, width);
@@ -246,7 +246,7 @@ void ComputeAffinityMatrices(Mat* K_A, Mat* K_B, const png_bytep* const img_byte
         ComputeDistance(sample_pixels_x, sample_pixels_y, sample_pixels_value, sample_x, sample_y, sample_value, v);
 
         VecGetValues(v, remaining_pixels_size, col_indices, values);
-        MatSetValues(*K_B, 1, (int*)&i, remaining_pixels_size, col_indices, values, INSERT_VALUES);
+        MatSetValues(*K_B, 1, &i, remaining_pixels_size, col_indices, values, INSERT_VALUES);
     }
     VecDestroy(&sample_pixels_value);
     VecDestroy(&sample_pixels_y);
@@ -288,7 +288,7 @@ void ComputeEntireAffinityMatrix(Mat* K, const png_bytep* const img_bytes, const
     unsigned int current_x, current_y, current_idx;
     // These vectors will contain all gray values, x and y of the sample pixels
     // Each line is computed locally, so they are local
-    for (unsigned int j = 0; j < N; ++j)
+    for (PetscInt j = 0; j < N; ++j)
     {
         current_idx = j;
         current_x = num2x(current_idx, width);
@@ -312,7 +312,7 @@ void ComputeEntireAffinityMatrix(Mat* K, const png_bytep* const img_bytes, const
     VecDuplicate(current_pixels_value, &v);
 
     MatGetOwnershipRange(*K, &istart, &iend);
-    for (unsigned int i = istart; i < iend; ++i)
+    for (PetscInt i = istart; i < iend; ++i)
     {
         current_idx = i;
         current_x = num2x(current_idx, width);
@@ -322,7 +322,7 @@ void ComputeEntireAffinityMatrix(Mat* K, const png_bytep* const img_bytes, const
         ComputeDistance(current_pixels_x, current_pixels_y, current_pixels_value, current_x, current_y, current_value, v);
 
         VecGetValues(v, N, col_indices, values);
-        MatSetValues(*K, 1, (int*)&i, N, col_indices, values, INSERT_VALUES);
+        MatSetValues(*K, 1, &i, N, col_indices, values, INSERT_VALUES);
     }
     VecDestroy(&v);
     VecDestroy(&current_pixels_value);
