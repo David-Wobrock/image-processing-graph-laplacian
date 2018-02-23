@@ -1,4 +1,5 @@
-#include <petscmat.h>
+#include "inverse_power_it.h"
+
 #include <petscvec.h>
 #include <petscksp.h>
 
@@ -82,7 +83,7 @@ static PetscScalar ComputeResidualsNorm(Mat A, Vec* X_k_vec, const unsigned int 
 A is symmetric (and square)
 p the number of eigenvectors
 */
-void InversePowerIteration(const Mat A, const unsigned int m, Mat* eigenvectors, Mat* eigenvalues)
+void InversePowerIteration(const Mat A, const unsigned int m, Mat* eigenvectors, Mat* eigenvalues, PetscBool optiGramSchmidt)
 {
     PetscInt p;
     MatGetSize(A, &p, NULL);
@@ -157,12 +158,23 @@ void InversePowerIteration(const Mat A, const unsigned int m, Mat* eigenvectors,
         CopyVecs(X_k, X_k_before_orth, m);
 
         double ortho_start = MPI_Wtime();
-        OrthonormaliseVecs(X_k, p, m, norms);
+        if (!optiGramSchmidt)
+        {
+            OrthonormaliseVecs(X_k, p, m, norms);
+        }
+        else if (num_outer_it % 2 == 0)
+        {
+            OrthonormaliseVecs(X_k, p, m, norms);
+        }
         PetscPrintf(PETSC_COMM_WORLD, "* Orthonormalising took %fs\n", MPI_Wtime() - ortho_start);
         double res_start = MPI_Wtime();
         r_norm = ComputeResidualsNorm(A, X_k, m);
         PetscPrintf(PETSC_COMM_WORLD, "* Computing residual %fs\n***\n", MPI_Wtime() - res_start);
         //PetscPrintf(PETSC_COMM_WORLD, "New residual: %f\n", r_norm);
+    }
+    if (optiGramSchmidt && (num_outer_it % 2) != 0)
+    {
+        OrthonormaliseVecs(X_k, p, m, norms);
     }
     PetscPrintf(PETSC_COMM_WORLD, "Inverse subspace iteration took %d outer iterations\n", num_outer_it);
     KSPDestroy(&ksp);

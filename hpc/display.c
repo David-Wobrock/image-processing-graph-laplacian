@@ -132,6 +132,7 @@ png_bytep* ComputeResultFromEntireLaplacian(const png_bytep* const img_bytes, Ma
 
     MatMatMult(Lapl, z, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &Lapl_y);
 
+    // f function to Lapl
     // z = y - Ly
     MatAXPY(z, -1.0, Lapl_y, SAME_NONZERO_PATTERN);
     MatDestroy(&Lapl_y);

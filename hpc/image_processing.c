@@ -125,6 +125,15 @@ static PetscBool UseSlepc()
     return found_slepc;
 }
 
+static PetscBool GetOptiGramSchmidt()
+{
+    PetscErrorCode ierr = 0;
+    PetscBool found_opti;
+
+    ierr = PetscOptionsHasName(NULL, NULL, "-opti_gs", &found_opti); CHKERRQ(ierr);
+    return found_opti;
+}
+
 static png_bytep* EntireComputation(const png_bytep* const img_bytes, const unsigned int width, const unsigned int height)
 {
     // Compute affinity matrix
@@ -193,7 +202,7 @@ static png_bytep* ApproximationComputation(png_bytep* img_bytes, const unsigned 
     }
     else
     {
-        InversePowerIteration(L_A, m, &eigvecs_A, &eigvals);
+        InversePowerIteration(L_A, m, &eigvecs_A, &eigvals, GetOptiGramSchmidt());
     }
     PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_inv_it);
     WriteDiagMat(eigvals, "results/eigenvalues_laplacian.txt");
