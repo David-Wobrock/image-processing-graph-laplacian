@@ -112,7 +112,7 @@ static PetscBool NoApproximationRequired()
     PetscErrorCode ierr = 0;
     PetscBool found_noapprox;
 
-    ierr = PetscOptionsHasName(NULL, NULL, "-noapprox", &found_noapprox); CHKERRQ(ierr);
+    ierr = PetscOptionsHasName(NULL, NULL, "-no_approx", &found_noapprox); CHKERRQ(ierr);
     return found_noapprox;
 }
 
