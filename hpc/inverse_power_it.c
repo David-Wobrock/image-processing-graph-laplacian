@@ -83,7 +83,7 @@ static PetscScalar ComputeResidualsNorm(Mat A, Vec* X_k_vec, const unsigned int 
 A is symmetric (and square)
 p the number of eigenvectors
 */
-void InversePowerIteration(const Mat A, const unsigned int m, Mat* eigenvectors, Mat* eigenvalues, PetscBool optiGramSchmidt)
+void InversePowerIteration(const Mat A, const unsigned int m, Mat* eigenvectors, Mat* eigenvalues, PetscBool optiGramSchmidt, PetscScalar epsilon)
 {
     PetscInt p;
     MatGetSize(A, &p, NULL);
@@ -116,7 +116,7 @@ void InversePowerIteration(const Mat A, const unsigned int m, Mat* eigenvectors,
     }*/
 
     // Inverse subspace/power iteration
-    PetscScalar epsilon = 0.1, r_norm;
+    PetscScalar r_norm;
 
     KSP ksp;
     KSPCreate(PETSC_COMM_WORLD, &ksp);

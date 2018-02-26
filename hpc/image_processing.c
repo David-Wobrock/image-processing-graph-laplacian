@@ -38,38 +38,6 @@ static PetscErrorCode InitProgram(int argc, char** argv, int* const rank, int* c
 }
 
 /*
-Input: an allocate space for filename
-Output: filled filename
-*/
-static PetscErrorCode GetFilePath(char* const filename)
-{
-    PetscErrorCode ierr = 0;
-    PetscBool found_filename;
-
-    ierr = PetscOptionsGetString(NULL, NULL, "-f", filename, PETSC_MAX_PATH_LEN, &found_filename); CHKERRQ(ierr);
-    if (!found_filename)
-    {
-        PetscFPrintf(PETSC_COMM_WORLD, stderr, "No filename found (option -f)\n");
-        exit(1);
-    }
-    return ierr;
-}
-
-static PetscInt GetNumberEigenvalues(const unsigned int sample_size)
-{
-    PetscInt num_eigvals;
-    PetscBool found;
-
-    PetscOptionsGetInt(NULL, NULL, "-num_eigvals", &num_eigvals, &found);
-    if (!found || num_eigvals < 0 || num_eigvals >= sample_size)
-    {
-        num_eigvals = sample_size-1;
-        PetscFPrintf(PETSC_COMM_WORLD, stderr, "No or invalid number of eigenvalues found (option -num_eigvals), so using %d\n", num_eigvals);
-    }
-    return num_eigvals;
-}
-
-/*
 Read image and broadcast it to everyone
 Input: rank, filename, *not* allocated img_bytes
 Output: allocated and filled img_bytes, filled image width and height
@@ -107,6 +75,38 @@ static void ReadAndBcastImage(const int rank, const char* const filename, png_by
     }
 }
 
+/*
+Input: an allocate space for filename
+Output: filled filename
+*/
+static PetscErrorCode GetFilePath(char* const filename)
+{
+    PetscErrorCode ierr = 0;
+    PetscBool found_filename;
+
+    ierr = PetscOptionsGetString(NULL, NULL, "-f", filename, PETSC_MAX_PATH_LEN, &found_filename); CHKERRQ(ierr);
+    if (!found_filename)
+    {
+        PetscFPrintf(PETSC_COMM_WORLD, stderr, "No filename found (option -f)\n");
+        exit(1);
+    }
+    return ierr;
+}
+
+static PetscInt GetNumberEigenvalues(const unsigned int sample_size)
+{
+    PetscInt num_eigvals;
+    PetscBool found;
+
+    PetscOptionsGetInt(NULL, NULL, "-num_eigvals", &num_eigvals, &found);
+    if (!found || num_eigvals < 0 || num_eigvals >= sample_size)
+    {
+        num_eigvals = sample_size-1;
+        PetscFPrintf(PETSC_COMM_WORLD, stderr, "Invalid or invalid number of eigenvalues found (option -num_eigvals), so using %d\n", num_eigvals);
+    }
+    return num_eigvals;
+}
+
 static PetscBool NoApproximationRequired()
 {
     PetscErrorCode ierr = 0;
@@ -134,6 +134,19 @@ static PetscBool GetOptiGramSchmidt()
     return found_opti;
 }
 
+static PetscScalar GetInverseIterationEpsilon()
+{
+    PetscErrorCode ierr = 0;
+    PetscBool found;
+    PetscScalar epsilon;
+
+    ierr = PetscOptionsGetScalar(NULL, NULL, "-inv_it_epsilon", &epsilon, &found); CHKERRQ(ierr);
+    if (!found)
+    {
+        epsilon = 0.1;
+    }
+    return epsilon;
+}
 static png_bytep* EntireComputation(const png_bytep* const img_bytes, const unsigned int width, const unsigned int height)
 {
     // Compute affinity matrix
@@ -202,7 +215,15 @@ static png_bytep* ApproximationComputation(png_bytep* img_bytes, const unsigned 
     }
     else
     {
-        InversePowerIteration(L_A, m, &eigvecs_A, &eigvals, GetOptiGramSchmidt());
+        PetscScalar epsilon = GetInverseIterationEpsilon();
+        PetscPrintf(PETSC_COMM_WORLD, "(epsilon: %g) ", epsilon);
+        InversePowerIteration(
+            L_A,
+            m,
+            &eigvecs_A,
+            &eigvals,
+            GetOptiGramSchmidt(),
+            epsilon);
     }
     PetscPrintf(PETSC_COMM_WORLD, "%fs\n", MPI_Wtime() - start_inv_it);
     WriteDiagMat(eigvals, "results/eigenvalues_laplacian.txt");
