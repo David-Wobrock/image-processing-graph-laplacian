@@ -69,7 +69,8 @@ png_bytep* ComputeResultFromLaplacian(const png_bytep* const img_bytes, Mat phi,
     MatDestroy(&left);
     MatDestroy(&right);
 
-    MatAXPY(z, -1.0, Lapl_y, SAME_NONZERO_PATTERN);
+    // f function apply to Laplacian
+    MatAXPY(z, 3.0, Lapl_y, SAME_NONZERO_PATTERN);
     MatDestroy(&Lapl_y);
 
     Mat z_tmp = AboveXSetY(z, 255, 255);

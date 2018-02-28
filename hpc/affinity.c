@@ -114,7 +114,7 @@ static void ComputeBilateralFilter(Vec sample_pixels_x, Vec sample_pixels_y, Vec
 
 void ComputeDistance(Vec sample_pixels_x, Vec sample_pixels_y, Vec sample_pixels_value, const unsigned int sample_x, const unsigned int sample_y, const double sample_value, Vec v)
 {
-    const PetscScalar h_val = 10.;
+    const PetscScalar h_val = 30.;
     const PetscScalar h_loc = 40.;
     //ComputePhotometricDistance(sample_pixels_value, sample_value, h_val, v);
     //ComputeSpatialFilter(sample_pixels_x, sample_pixels_y, sample_x, sample_y, h_loc, v);
