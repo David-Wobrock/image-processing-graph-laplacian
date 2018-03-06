@@ -134,17 +134,24 @@ void InversePowerIteration(const Mat A, const unsigned int m, Mat* eigenvectors,
     KSPSetFromOptions(ksp);
     KSPSetUp(ksp);
 
-    // Set subsolvers
-    KSP *subksp;
-    PC subpc;
-    PetscInt num_local;
-    PCASMGetSubKSP(pc, &num_local, NULL, &subksp);
-    for (unsigned int i = 0; i < num_local; ++i)
-    {
-        KSPSetType(subksp[i], KSPGMRES);
+    PCType type;
+    PCGetType(pc, &type);
+    PetscPrintf(PETSC_COMM_WORLD, "TYPE %s\n", type);
 
-        KSPGetPC(subksp[i], &subpc);
-        PCSetType(subpc, PCNONE);
+    // Set subsolvers
+    if (strcmp(type, PCASM) == 0)
+    {
+        KSP *subksp;
+        PC subpc;
+        PetscInt num_local;
+        PCASMGetSubKSP(pc, &num_local, NULL, &subksp);
+        for (unsigned int i = 0; i < num_local; ++i)
+        {
+            KSPSetType(subksp[i], KSPGMRES);
+
+            KSPGetPC(subksp[i], &subpc);
+            PCSetType(subpc, PCNONE);
+        }
     }
 
     r_norm = ComputeResidualsNorm(A, X_k, m);
