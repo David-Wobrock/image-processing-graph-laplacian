@@ -121,7 +121,7 @@ void InversePowerIteration(const Mat A, const unsigned int m, Mat* eigenvectors,
     KSP ksp;
     KSPCreate(PETSC_COMM_WORLD, &ksp);
     KSPSetOperators(ksp, A, A);
-    KSPSetType(ksp, KSPGMRES);
+    KSPSetType(ksp, KSPPREONLY);
 
     PC pc;
     KSPGetPC(ksp, &pc);
@@ -136,11 +136,15 @@ void InversePowerIteration(const Mat A, const unsigned int m, Mat* eigenvectors,
 
     // Set subsolvers
     KSP *subksp;
+    PC subpc;
     PetscInt num_local;
     PCASMGetSubKSP(pc, &num_local, NULL, &subksp);
     for (unsigned int i = 0; i < num_local; ++i)
     {
         KSPSetType(subksp[i], KSPGMRES);
+
+        KSPGetPC(subksp[i], &subpc);
+        PCSetType(subpc, PCNONE);
     }
 
     r_norm = ComputeResidualsNorm(A, X_k, m);
@@ -169,8 +173,7 @@ void InversePowerIteration(const Mat A, const unsigned int m, Mat* eigenvectors,
         PetscPrintf(PETSC_COMM_WORLD, "* Orthonormalising took %fs\n", MPI_Wtime() - ortho_start);
         double res_start = MPI_Wtime();
         r_norm = ComputeResidualsNorm(A, X_k, m);
-        PetscPrintf(PETSC_COMM_WORLD, "* Computing residual %fs\n***\n", MPI_Wtime() - res_start);
-        //PetscPrintf(PETSC_COMM_WORLD, "New residual: %f\n", r_norm);
+        PetscPrintf(PETSC_COMM_WORLD, "* Computing residual %fs (outer iteration %d - residual %f)\n***\n", MPI_Wtime() - res_start, num_outer_it, r_norm);
     }
     if (optiGramSchmidt && (num_outer_it % 2) != 0)
     {
