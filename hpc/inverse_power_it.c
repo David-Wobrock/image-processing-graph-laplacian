@@ -151,6 +151,8 @@ void InversePowerIteration(const Mat A, const unsigned int m, Mat* eigenvectors,
 
             KSPGetPC(subksp[i], &subpc);
             PCSetType(subpc, PCNONE);
+
+            KSPSetFromOptions(subksp[i]);
         }
     }
 
