@@ -121,7 +121,7 @@ void InversePowerIteration(const Mat A, const unsigned int m, Mat* eigenvectors,
     KSP ksp;
     KSPCreate(PETSC_COMM_WORLD, &ksp);
     KSPSetOperators(ksp, A, A);
-    KSPSetType(ksp, KSPPREONLY);
+    KSPSetType(ksp, KSPGMRES);
 
     PC pc;
     KSPGetPC(ksp, &pc);
