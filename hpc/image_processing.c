@@ -125,13 +125,18 @@ static PetscBool UseSlepc()
     return found_slepc;
 }
 
-static PetscBool GetOptiGramSchmidt()
+static PetscInt GetOptiGramSchmidt()
 {
     PetscErrorCode ierr = 0;
     PetscBool found_opti;
+    PetscInt value;
 
-    ierr = PetscOptionsHasName(NULL, NULL, "-opti_gs", &found_opti); CHKERRQ(ierr);
-    return found_opti;
+    ierr = PetscOptionsGetInt(NULL, NULL, "-opti_gs", &value, &found_opti); CHKERRQ(ierr);
+    if (!found_opti || value < 1)
+    {
+        value = 1;
+    }
+    return value;
 }
 
 static PetscScalar GetInverseIterationEpsilon()

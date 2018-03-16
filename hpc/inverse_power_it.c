@@ -171,11 +171,7 @@ void InversePowerIteration(const Mat A, const unsigned int m, Mat* eigenvectors,
         CopyVecs(X_k, X_k_before_orth, m);
 
         double ortho_start = MPI_Wtime();
-        if (!optiGramSchmidt)
-        {
-            OrthonormaliseVecs(X_k, p, m, norms);
-        }
-        else if (num_outer_it % 2 == 0)
+        if (num_outer_it % optiGramSchmidt == 0)
         {
             OrthonormaliseVecs(X_k, p, m, norms);
         }
@@ -184,7 +180,7 @@ void InversePowerIteration(const Mat A, const unsigned int m, Mat* eigenvectors,
         r_norm = ComputeResidualsNorm(A, X_k, m);
         PetscPrintf(PETSC_COMM_WORLD, "* Computing residual %fs (outer iteration %d - residual %f)\n***\n", MPI_Wtime() - res_start, num_outer_it, r_norm);
     }
-    if (optiGramSchmidt && (num_outer_it % 2) != 0)
+    if (optiGramSchmidt != 1 && (num_outer_it % optiGramSchmidt) != 0)
     {
         OrthonormaliseVecs(X_k, p, m, norms);
     }

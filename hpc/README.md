@@ -24,6 +24,6 @@ Options when running:
 * `-num_eigvals NUM` - number of eigenvalues to compute. Defaults to `sample_size - 1`
 * `-no_approx` - compute full matrices, no approximation, no eigenvalue computation
 * `-use_slepc` - compute the eigenvalues using SLEPc
-* `-opti_gs` - when using the inverse iteration, only apply Gram-Schmidt every other outer iteration
+* `-opti_gs NUM` - when using the inverse iteration, only apply Gram-Schmidt every NUM iteration
 * `-inv_it_epsilon EPS` - set the epsilon of the outer iteration, the value the residual norm must reach
 * And PETSc options: `-pc_type`, `-ksp_type`, `-sub_pc_type`, `-sub_ksp_type`... By default, the KSP is *GMRES* since we use RAS domain decomposition. Therefore the PC is *asm* (*restrict*) and the sub KSPs are *GMRES* (and sub PC *none*). So you can use a direct solver on subdomains with `-sub_pc_type lu -sub_ksp_type preonly` for example, or remove DDM with `-pc_type none`.
